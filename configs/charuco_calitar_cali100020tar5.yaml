@@ -1,0 +1,21 @@
+board:
+  name: "CALITAR CALI100020TAR.5"
+  source_url: "https://www.calitar.com/Charuco-Target/CALI100020TAR.5"
+  type: "charuco"
+  # The printed label says "Charuco Target | 15 x 20 | Checker Size: 32.00 mm |
+  # Marker Size: 24.00 mm | DICT_5X5_1000". OpenCV names these as horizontal
+  # and vertical square counts; the target is landscape, so x=20 and y=15.
+  squares_x: 20
+  squares_y: 15
+  square_length_mm: 32.0
+  marker_length_mm: 24.0
+  dictionary: "DICT_5X5_1000"
+  physical_size_mm: [800.0, 600.0, 6.0]
+
+calibration:
+  minimum_charuco_corners: 24
+  subpixel_refinement: true
+  flags:
+    fix_aspect_ratio: false
+    zero_tangent_dist: false
+    rational_model: true

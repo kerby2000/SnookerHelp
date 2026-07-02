@@ -1,0 +1,17 @@
+source_image: Media/01_empty_table/DSC00543.JPG
+image_width: 6000
+image_height: 4000
+point_order:
+- top_left
+- top_right
+- bottom_right
+- bottom_left
+corner_points_px:
+- - 348.0
+  - 688.0
+- - 5624.0
+  - 732.0
+- - 5660.0
+  - 3352.0
+- - 312.0
+  - 3332.0

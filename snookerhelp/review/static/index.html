@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SnookerHelp v1 Review</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div>
+        <h1>SnookerHelp v1 Review <span id="uiVersion" class="version-badge"></span></h1>
+        <p>Schema-driven review: pixels, image evidence, physical model, final estimate, confidence.</p>
+      </div>
+      <label class="report-picker">
+        Image
+        <select id="reportSelect"></select>
+      </label>
+    </div>
+    <span class="muted">Focused evidence view</span>
+  </header>
+
+  <main class="workspace">
+    <section class="panel pixels-panel">
+      <div class="panel-header">
+        <h2>Pixels</h2>
+        <span id="imageSummary" class="muted"></span>
+      </div>
+      <div class="image-stage" id="sourceStage">
+        <img id="sourceImage" alt="source image">
+        <svg id="sourceOverlay"></svg>
+      </div>
+    </section>
+
+    <section class="panel detail-panel">
+      <div class="panel-header">
+        <h2 id="ballTitle">Final estimate</h2>
+        <div class="nav">
+          <button id="prevBall" type="button">‹</button>
+          <span id="ballPosition" class="muted"></span>
+          <button id="nextBall" type="button">›</button>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <section class="subpanel zoom-subpanel">
+          <h3>Pixels</h3>
+          <div class="crop-stage">
+            <svg id="cropOverlay" role="img" aria-label="selected ball crop with evidence overlays"></svg>
+          </div>
+        </section>
+
+        <section class="subpanel layers-subpanel">
+          <div class="subpanel-title-row">
+            <h3>Evidence layers</h3>
+            <button id="legendOpen" class="small-button" type="button">Help / legend</button>
+          </div>
+          <div id="mapControls" class="map-controls"></div>
+          <div id="layerControls" class="layer-controls"></div>
+        </section>
+
+        <section class="subpanel image-subpanel">
+          <h3>Image evidence</h3>
+          <dl id="imageEvidence"></dl>
+        </section>
+
+        <section class="subpanel physical-subpanel">
+          <h3>Physical model</h3>
+          <dl id="physicalModel"></dl>
+        </section>
+
+        <section class="subpanel confidence-subpanel">
+          <h3>Confidence</h3>
+          <dl id="confidencePanel"></dl>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel stats-panel">
+      <div class="panel-header">
+        <h2>Ball statistics</h2>
+        <span id="statsSummary" class="muted"></span>
+      </div>
+      <div class="selected-summary" id="selectedSummary"></div>
+      <div class="score-table-wrap">
+        <table class="score-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Color</th>
+              <th>Score</th>
+              <th>Level</th>
+              <th>Evidence</th>
+            </tr>
+          </thead>
+          <tbody id="ballStatsRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <aside id="floatingLegend" class="legend-popover hidden" style="left: 760px; top: 112px;">
+    <div id="legendHeader" class="legend-header">
+      <strong>Evidence help / legend</strong>
+      <button id="legendClose" class="small-button" type="button">×</button>
+    </div>
+    <div class="legend-body">
+      <p><strong>Background button</strong>: changes only the crop image behind the overlays.</p>
+      <p><strong>White dots</strong>: accepted boundary pixels sampled from that row's evidence view.</p>
+      <p><strong>Red dots</strong>: rejected outlier boundary pixels. They are visible for review but excluded from that row's ellipse fit.</p>
+      <p><strong>Dashed outline</strong>: cream = observed ellipse fitted from accepted image points; blue = predicted physical sphere outline.</p>
+      <p><strong>Neighbor ellipses</strong>: purple dashed outlines show nearby detected balls. Boundary dots inside these neighbor ellipses can be rejected as neighbor-owned evidence before fitting the selected ball's cream ellipse.</p>
+      <p><strong>Center cross</strong>: center of the row's observed ellipse or physical projection. The final source-pixel center remains a separate green reference cross.</p>
+      <p><strong>Evidence-view score</strong>: diagnostic score for comparing rows. It combines physical-outline residual, accepted point count, inlier ratio, and whether an ellipse was fitted. It is not ground truth.</p>
+      <p><strong>B/C/L color reference</strong>: ball-vs-cloth probability, chroma difference, and Lab Delta-E use the active cloth reference shown in Image evidence. In v1.3.9 this is global table cloth when available; the old local annulus remains visible as a diagnostic because it can be contaminated by neighboring balls in clusters.</p>
+      <p><strong>Final source center</strong>: the exported source pixel comes from the configured final map policy: ball-vs-cloth probability by default, chroma difference for green/blue/brown, with fallback to the older source center if that map fails.</p>
+      <p><strong>Confidence score</strong>: no manual annotation or physical ground truth is used here. The displayed score starts from the detector/review baseline, then can rise only when image evidence and the blue physical sphere projection agree. If the physical residual is low quality, it cannot raise confidence.</p>
+      <p><strong>Layer row button</strong>: clears the overlay matrix, switches the background if the row has one, and enables that row's dots/outline/center.</p>
+    </div>
+  </aside>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

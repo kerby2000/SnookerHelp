@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snooker-vision"
+version = "0.1.0"
+description = "Classical OpenCV table-state recognition for a fixed overhead snooker camera"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "opencv-python>=4.8",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+viz = ["manim>=0.20,<0.21"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["vision*", "capture*", "snookerhelp*", "legacy*"]
+
+[tool.setuptools.package-data]
+snookerhelp = ["review/static/*.html", "review/static/*.js", "review/static/*.css"]

@@ -1,0 +1,19 @@
+table:
+  name: "home_snooker_table"
+  playing_surface:
+    length_mm: 3569.0
+    width_mm: 1778.0
+
+coordinates:
+  origin: "bottom_left_inner_playing_surface"
+  x_axis: "table_length_left_to_right"
+  y_axis: "table_width_bottom_to_top"
+  z_axis: "up_from_cloth"
+
+balls:
+  diameter_mm: 52.5
+  radius_mm: 26.25
+
+warp:
+  px_per_mm: 1.0
+  processing_margin_mm: 120.0

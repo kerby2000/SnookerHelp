@@ -1,0 +1,143 @@
+background_image: "Media/01_empty_table/DSC00543.JPG"
+
+difference:
+  blur_kernel: 5
+  minimum_median_lab_distance: 15.0
+  foreground_lab_distance: 20.0
+  visualization_scale: 2.0
+
+hough:
+  dp: 1.2
+  minimum_center_distance_radius_factor: 1.30
+  edge_threshold: 60.0
+  accumulator_threshold: 11.0
+  minimum_radius_factor: 0.68
+  maximum_radius_factor: 1.26
+
+sampling:
+  inner_radius_factor: 0.46
+  highlight_value_limit: 250
+  minimum_non_highlight_pixels: 20
+
+circle_refinement:
+  enabled: true
+  angle_count: 180
+  radial_step_px: 0.25
+  inner_radius_factor: 0.62
+  outer_radius_factor: 1.42
+  minimum_edge_strength: 1.5
+  minimum_points: 36
+  maximum_center_shift_radius_factor: 0.35
+  minimum_radius_factor: 0.72
+  maximum_radius_factor: 1.30
+  maximum_residual_px: 2.5
+
+source_refinement:
+  enabled: true
+  angle_count: 180
+  radial_step_px: 0.35
+  inner_radius_factor: 0.55
+  outer_radius_factor: 1.45
+  minimum_edge_strength: 1.25
+  minimum_points: 42
+  maximum_center_shift_radius_factor: 0.45
+  minimum_radius_factor: 0.65
+  maximum_radius_factor: 1.45
+  maximum_residual_px: 3.5
+  roi_margin_radius_factor: 1.85
+  minimum_roi_half_size_px: 24
+  boundary_outlier_filter_enabled: true
+  boundary_outlier_segment_endpoint_trim_points: 1
+  boundary_outlier_segment_gap_factor: 2.25
+  boundary_outlier_window_points: 9
+  boundary_outlier_radius_factor: 0.085
+  boundary_outlier_min_radius_px: 3.0
+  boundary_outlier_ellipse_passes: 2
+  boundary_outlier_ellipse_radius_factor: 0.08
+  boundary_outlier_min_ellipse_residual_px: 3.25
+
+evidence_maps:
+  enabled: true
+  cloth_reference_mode: global
+  evidence_map_roi_radius_factor: 2.55
+  evidence_map_minimum_half_size_px: 96
+  minimum_value_for_color_model: 28.0
+  highlight_value_limit: 245.0
+  ball_inner_radius_factor: 0.55
+  cloth_inner_radius_factor: 1.25
+  cloth_outer_radius_factor: 1.95
+  global_cloth_erode_px: 24
+  global_cloth_exclusion_radius_factor: 2.2
+  global_cloth_minimum_samples: 500
+  physical_band_sigma_px: 5.5
+  neighbor_ellipse_rejection_enabled: true
+  neighbor_ellipse_rejection_axis_scale: 0.92
+  neighbor_ellipse_rejection_distance_factor: 3.2
+  final_position_policy:
+    enabled: true
+    default_map: ball_vs_cloth_probability
+    maximum_axis_ratio: 2.0
+    maximum_center_shift_radius_factor: 0.9
+    maximum_major_axis_radius_factor: 3.2
+    label_overrides:
+      green: chroma_difference
+      blue: chroma_difference
+      brown: chroma_difference
+    note: >
+      User-reviewed free-standing balls showed ball-vs-cloth probability is
+      the best default observed ellipse source, while green/blue/brown balls
+      usually fit better from chroma difference. Other evidence maps remain
+      diagnostics and do not influence the final source/table position.
+
+physical_optimization:
+  enabled: true
+  z_mm: 26.25
+  minimum_observed_points: 18
+  search_radius_mm: 18.0
+  coarse_step_mm: 6.0
+  movement_prior_mm: 18.0
+  maximum_allowed_movement_mm: 28.0
+  minimum_objective_improvement: 0.015
+  residual_normalizer_px: 8.0
+  missing_point_term: 0.72
+  point_residual_weight: 0.42
+  evidence_map_weight: 0.32
+  movement_prior_weight: 0.18
+  neighbor_penalty_weight: 0.06
+  cushion_penalty_weight: 0.02
+
+cluster_optimization:
+  enabled: true
+  target_distance_mm: 52.5
+  neighbor_distance_factor: 1.22
+  contact_distance_factor: 1.16
+  iterations: 36
+  pair_strength: 0.18
+  collision_strength: 0.42
+  anchor_blend: 0.08
+  max_movement_mm: 14.0
+  minimum_improvement_mm: 0.35
+
+selection:
+  max_balls: 22
+  spatial_diversity_weight: 0.50
+  duplicate_suppression_enabled: true
+  duplicate_same_label_only: true
+  duplicate_suppression_near_edge_only: true
+  duplicate_center_distance_radius_factor: 1.60
+  isolated_overlap_suppression_enabled: true
+  isolated_overlap_neighbor_radius_factor: 3.0
+  isolated_overlap_max_same_label_cluster_size: 2
+  edge_touch_bonus: 0.45
+  edge_touch_max_distance_radius_factor: 3.0
+  use_inventory_limits: true
+  inventory_limits:
+    red: 15
+    yellow: 1
+    green: 1
+    brown: 1
+    blue: 1
+    pink: 1
+    black: 1
+    white: 1
+    unknown: 22
