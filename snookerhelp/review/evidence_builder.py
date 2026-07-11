@@ -16,11 +16,9 @@ from snookerhelp.recognition.arc_combo_fit import (
     arc_combination_refit as recognition_arc_combination_refit,
 )
 from snookerhelp.recognition.image_model import fit_ellipse_payload
+from snookerhelp.recognition.evidence_scoring import boundary_view_score
 from snookerhelp.recognition.source_refinement import (
     fit_radial_boundary_variant_from_feature,
-)
-from snookerhelp.recognition.sphere_projection import (
-    score_observed_points_against_silhouette,
 )
 from snookerhelp.recognition.confidence import (
     combined_confidence,
@@ -229,7 +227,7 @@ def build_review_evidence(
                     "source_radial_boundary_filter",
                     ball.get("source_boundary_filter", {}),
                 ),
-                "boundary_view_score": _boundary_view_score(
+                    "boundary_view_score": boundary_view_score(
                     points_px=ball.get(
                         "source_radial_boundary_points_px",
                         ball.get("source_boundary_points_px", []),
@@ -445,7 +443,7 @@ def _write_evidence_map_assets(
                 "label": label,
                 "description": description,
                 "sampling": "outward_drop" if use_outward_drop else "peak_response",
-                "view_score": _boundary_view_score(
+                "view_score": boundary_view_score(
                     points_px=variant.get("points_px") or [],
                     rejected_points_px=variant.get("rejected_points_px") or [],
                     ellipse_fit=variant.get("ellipse_fit"),
@@ -501,86 +499,6 @@ def _map_canvas_for_review_crop(
     patch = np.clip(values[src_y0:src_y1, src_x0:src_x1], 0.0, 1.0)
     canvas[dst_y0:dst_y1, dst_x0:dst_x1] = np.round(patch * 255.0).astype(np.uint8)
     return cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
-
-
-def _boundary_view_score(
-    *,
-    points_px: list[Any],
-    rejected_points_px: list[Any],
-    ellipse_fit: dict[str, Any] | None,
-    sphere_projection: dict[str, Any] | None,
-    radius_px: float | None,
-) -> dict[str, Any]:
-    """Diagnostic score for comparing evidence views.
-
-    This is not ground-truth accuracy. It estimates whether one evidence view
-    produced enough clean boundary points and whether those points agree with
-    the current physical sphere projection.
-    """
-
-    accepted_count = len(points_px or [])
-    rejected_count = len(rejected_points_px or [])
-    total_count = accepted_count + rejected_count
-    if accepted_count < 3 or not ellipse_fit:
-        return {
-            "status": "unavailable",
-            "score": None,
-            "level": "unknown",
-            "accepted_count": accepted_count,
-            "rejected_count": rejected_count,
-            "reason": "not enough accepted points or ellipse fit is missing",
-            "formula": (
-                "diagnostic_score = 45% physical residual + 30% accepted "
-                "point count + 20% inlier ratio + 5% ellipse availability"
-            ),
-        }
-
-    silhouette_score = score_observed_points_against_silhouette(
-        points_px,
-        sphere_projection,
-    )
-    rms_error = None
-    residual_component = 0.5
-    residual_reason = "physical outline unavailable; neutral residual component"
-    if silhouette_score and silhouette_score.get("status") == "scored":
-        rms_error = float(silhouette_score.get("rms_error_px") or 999.0)
-        normalizer = max(8.0, float(radius_px or 40.0) * 0.30)
-        residual_component = float(np.clip(1.0 - rms_error / normalizer, 0.0, 1.0))
-        residual_reason = "accepted points scored against physical sphere outline"
-
-    point_component = float(np.clip(accepted_count / 90.0, 0.0, 1.0))
-    inlier_ratio = accepted_count / max(1, total_count)
-    inlier_component = float(np.clip(inlier_ratio, 0.0, 1.0))
-    ellipse_component = 1.0
-    score = (
-        0.45 * residual_component
-        + 0.30 * point_component
-        + 0.20 * inlier_component
-        + 0.05 * ellipse_component
-    )
-    level = "high" if score >= 0.78 else "medium" if score >= 0.45 else "low"
-    return {
-        "status": "computed",
-        "score": round(float(score), 4),
-        "level": level,
-        "accepted_count": accepted_count,
-        "rejected_count": rejected_count,
-        "inlier_ratio": round(float(inlier_ratio), 4),
-        "physical_rms_error_px": (
-            round(float(rms_error), 4) if rms_error is not None else None
-        ),
-        "components": {
-            "physical_residual": round(float(residual_component), 4),
-            "accepted_point_count": round(float(point_component), 4),
-            "inlier_ratio": round(float(inlier_component), 4),
-            "ellipse_available": round(float(ellipse_component), 4),
-        },
-        "reason": residual_reason,
-        "formula": (
-            "diagnostic_score = 45% physical residual + 30% accepted point "
-            "count + 20% inlier ratio + 5% ellipse availability"
-        ),
-    }
 
 
 def _rejection_addback_scenarios(

@@ -1,56 +1,35 @@
-# SnookerHelp docs map
+# SnookerHelp documentation
 
-Start with:
+This directory contains maintained product and engineering documentation. Start
+with these documents, in order:
 
-0. [v2_requirements/README.md](v2_requirements/README.md)  
-   Canonical split requirements for the fresh recognition v2 attempt. Use this
-   before implementing new recognition logic. The older monolithic
-   `recognition_v2_requirements.md` is now source/archive material.
+1. [execution_plan.md](execution_plan.md) - active implementation phases,
+   acceptance gates, and cleanup policy.
+2. [architecture.md](architecture.md) - project boundary, runtime components,
+   hardware, and current data flow.
+3. [ball_geometry_model.md](ball_geometry_model.md) - image-space ellipse
+   evidence, physical sphere projection, final center, and uncertainty.
+4. [boundary_filtering_strategy.md](boundary_filtering_strategy.md) - current
+   evidence maps, sampling, filtering, and cluster limitations.
+5. [image_debug_reports.md](image_debug_reports.md) - report/review/experiment
+   workbench.
+6. [coordinate_accuracy_validation.md](coordinate_accuracy_validation.md) and
+   [physical_validation_tools.md](physical_validation_tools.md) - QA methods.
+7. [charuco_calibration_workflow.md](charuco_calibration_workflow.md) - real
+   camera calibration workflow.
 
-1. [ball_geometry_model.md](ball_geometry_model.md)  
-   Current prototype document for ball fitting, image evidence, physical model,
-   final estimate, confidence, and why circle/ellipse/sphere evidence can
-   disagree.
+Detailed contracts that have not yet passed their acceptance gates remain in
+[v2_requirements/](v2_requirements/README.md). They support the active execution
+plan; they are not a separate rewrite project.
 
-2. [image_debug_reports.md](image_debug_reports.md)  
-   How to generate reports and use the interactive review UI.
+Specialized references:
 
-3. [boundary_filtering_strategy.md](boundary_filtering_strategy.md)  
-   Current v1.4.6 accepted/rejected edge-point filtering, per-map boundary
-   variants, promoted final-position evidence-map policy, global cloth
-   reference, neighbor-ellipse cluster ownership filtering, diagnostic
-   evidence maps, physical optimization, adjacent-ball scene constraints,
-   generic large-cluster perimeter/interior shell diagnostics, same-color
-   cluster shape-prior diagnostics, benchmark gates, stable canonical review
-   numbering, and the plan for low-contrast blue/green balls on green cloth.
+- [approximate_camera_model.md](approximate_camera_model.md)
+- [precision_calibration_inputs.md](precision_calibration_inputs.md)
+- [baseline_validation.md](baseline_validation.md)
+- [manim_geometry_visualizations.md](manim_geometry_visualizations.md)
 
-4. [approximate_camera_model.md](approximate_camera_model.md)  
-   Current temporary camera model used before ChArUco calibration.
-
-5. [charuco_calibration_workflow.md](charuco_calibration_workflow.md)  
-   What to do when the CALITAR board arrives.
-
-6. [physical_validation_tools.md](physical_validation_tools.md)  
-   Touching-ball, cushion-touch, rack/cluster, spot, and repeatability
-   validation tools.
-
-7. [refactor_plan_v1.md](refactor_plan_v1.md)  
-   v1 architecture plan and migration status.
-
-Secondary / reference docs:
-
-- [architecture.md](architecture.md): hardware and project-level architecture.
-  Some early milestone text is historical; use `ball_geometry_model.md` for the
-  current fitting model.
-- [coordinate_accuracy_validation.md](coordinate_accuracy_validation.md):
-  manual annotation, accuracy, and repeatability tool reference.
-- [baseline_validation.md](baseline_validation.md): early baseline notes.
-- [precision_calibration_inputs.md](precision_calibration_inputs.md):
-  manual corner calibration command notes.
-- [manim_geometry_visualizations.md](manim_geometry_visualizations.md):
-  abstract animation plan, not the operational report workflow.
-
-Current implementation summary:
+## Current implementation summary
 
 ```text
 rough detection:          warped cloth-plane image

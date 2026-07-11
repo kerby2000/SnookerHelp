@@ -1,0 +1,15 @@
+schema_version: snookerhelp.benchmark_scenario.v1
+image_name: DSC00540
+scenario_type: intact_red_triangle_cluster
+annotation_quality:
+  reviewer_confidence: 0.925
+  default_center_tolerance_px: 3.0
+  default_contour_tolerance_px: 3.0
+  note: >
+    Human ellipse placement is estimated to be within a few source pixels.
+    Blurred and mutually occluded boundaries are not claimed as exact.
+groups:
+  loose_colours: [1, 2, 3, 4, 5, 6, 7]
+  triangle_reds: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+expected_red_count: 15
+

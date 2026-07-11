@@ -164,12 +164,47 @@ class ReviewFeedback:
 
 
 @dataclass(slots=True)
+class GroundTruthEllipse:
+    """Human image-space ellipse annotation for one visible ball silhouette."""
+
+    center_px: list[float]
+    major_axis_px: float
+    minor_axis_px: float
+    angle_deg: float
+    visible_arcs_deg: list[list[float]] = field(default_factory=list)
+    occluded_arcs_deg: list[list[float]] = field(default_factory=list)
+    source: str = "manual"
+    uncertainty: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _clean(asdict(self))
+
+
+@dataclass(slots=True)
 class GroundTruthBall:
     label: str
     coordinate_system: CoordinateSystem
     point: list[float]
     image_name: str | None = None
+    ball_id: int | None = None
+    ellipse_px: GroundTruthEllipse | None = None
     uncertainty: dict[str, Any] = field(default_factory=dict)
+    notes: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return _clean(asdict(self))
+
+
+@dataclass(slots=True)
+class GroundTruthImage:
+    """Tracked human annotations for one source image."""
+
+    schema_version: str
+    image_name: str
+    coordinate_system: CoordinateSystem
+    balls: list[GroundTruthBall] = field(default_factory=list)
+    image_path: str | None = None
+    reviewer: str | None = None
     notes: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

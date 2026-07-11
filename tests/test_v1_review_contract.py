@@ -204,6 +204,61 @@ def test_v1_server_put_saves_missing_ball_only_review(tmp_path: Path) -> None:
     assert saved_file["missing_balls"][0]["source_px"] == [12.0, 34.0]
 
 
+def test_v1_server_round_trips_perfect_ellipse_annotation(tmp_path: Path) -> None:
+    _write_minimal_report(tmp_path)
+    annotation_root = tmp_path / "annotations"
+    handler = _make_handler(tmp_path, annotations_root=annotation_root)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    payload = {
+        "schema_version": "snookerhelp.ground_truth.v1",
+        "image_name": "DSC00001",
+        "coordinate_system": "source_px",
+        "balls": [
+            {
+                "ball_id": 8,
+                "label": "red",
+                "point": [50.5, 40.25],
+                "ellipse_px": {
+                    "center_px": [50.5, 40.25],
+                    "major_axis_px": 20.0,
+                    "minor_axis_px": 18.0,
+                    "angle_deg": 5.0,
+                    "source": "manual_review_ui",
+                },
+            }
+        ],
+    }
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/annotations/DSC00001",
+            data=json.dumps(payload).encode("utf-8"),
+            method="PUT",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            saved = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/annotations/DSC00001",
+            timeout=5,
+        ) as response:
+            loaded = json.loads(response.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert saved["ok"] is True
+    assert loaded["ground_truth"]["balls"][0]["ball_id"] == 8
+    assert loaded["ground_truth"]["balls"][0]["ellipse_px"]["center_px"] == [
+        50.5,
+        40.25,
+    ]
+    assert (annotation_root / "DSC00001.json").is_file()
+
+
 def test_v1_static_html_uses_product_language() -> None:
     html = Path("snookerhelp/review/static/index.html").read_text(encoding="utf-8")
     app = Path("snookerhelp/review/static/app.js").read_text(encoding="utf-8")
@@ -222,7 +277,7 @@ def test_v1_static_html_uses_product_language() -> None:
     assert "uiVersion" in html
     assert "sourceZoomLabel" in html
     assert "sourceFitSelected" in html
-    assert 'const UI_VERSION = "v1.5.6"' in app
+    assert 'const UI_VERSION = "v1.6.0"' in app
     assert "setupSourceViewport" in app
     assert "fitSourceToSelected" in app
     assert "zoomSourceAtClient" in app
@@ -266,6 +321,11 @@ def test_v1_static_html_uses_product_language() -> None:
     assert "Manual cushion line" not in html
     assert "Pick manual center from crop" not in html
     assert "Click table for missing ball" not in html
+    assert "experimentControls" in html
+    assert "ellipseEditorControls" in html
+    assert "Perfect ellipse" in html
+    assert "runEvidenceExperiment" in app
+    assert "savePerfectEllipse" in app
     forbidden = [
         "Candidate A",
         "Candidate B",

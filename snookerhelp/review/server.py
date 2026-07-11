@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -9,7 +10,21 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 import webbrowser
 
+import cv2
+
 from snookerhelp.recognition import table_state_from_legacy_report
+from snookerhelp.recognition.evidence_experiment import run_evidence_experiment
+from snookerhelp.recognition.evidence_maps import (
+    compute_full_table_evidence_maps,
+    estimate_global_cloth_reference,
+)
+from snookerhelp.core.config import PROJECT_ROOT, load_yaml, resolve_path
+from snookerhelp.core.ground_truth import (
+    empty_ground_truth,
+    ground_truth_from_dict,
+    load_ground_truth,
+    save_ground_truth,
+)
 from snookerhelp.review.schema import (
     CANONICAL_BALL_NUMBERING_SCHEME,
     V1_REVIEW_SCHEMA,
@@ -45,7 +60,19 @@ def run_review_server(
         server.server_close()
 
 
-def _make_handler(reports_root: Path) -> type[BaseHTTPRequestHandler]:
+def _make_handler(
+    reports_root: Path,
+    *,
+    annotations_root: Path | None = None,
+) -> type[BaseHTTPRequestHandler]:
+    annotation_store = (
+        annotations_root.resolve()
+        if annotations_root is not None
+        else PROJECT_ROOT / "benchmarks" / "annotations"
+    )
+    experiment_cache: dict[str, Any] = {}
+    experiment_cache_lock = threading.Lock()
+
     class ReviewV1Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             try:
@@ -66,6 +93,20 @@ def _make_handler(reports_root: Path) -> type[BaseHTTPRequestHandler]:
             except Exception as exc:  # pragma: no cover - defensive server guard
                 try:
                     self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                    return
+
+        def do_POST(self) -> None:  # noqa: N802
+            try:
+                self._handle_post()
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
+            except Exception as exc:  # pragma: no cover - defensive server guard
+                try:
+                    self._send_json(
+                        {"error": str(exc)},
+                        status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                    )
                 except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
                     return
 
@@ -91,6 +132,16 @@ def _make_handler(reports_root: Path) -> type[BaseHTTPRequestHandler]:
                 stem = _strip_prefix(path, "/api/review/")
                 self._send_json(_load_review_payload(reports_root, stem))
                 return
+            if path.startswith("/api/annotations/"):
+                stem = _strip_prefix(path, "/api/annotations/")
+                self._send_json(
+                    _load_annotation_payload(
+                        reports_root,
+                        stem,
+                        annotations_root=annotation_store,
+                    )
+                )
+                return
             if path.startswith("/assets/"):
                 stem, relative = _asset_parts(_strip_prefix(path, "/assets/"))
                 report_dir = _safe_report_dir(reports_root, stem)
@@ -104,13 +155,31 @@ def _make_handler(reports_root: Path) -> type[BaseHTTPRequestHandler]:
 
         def _handle_put(self) -> None:
             path = unquote(urlparse(self.path).path)
+            if path.startswith("/api/annotations/"):
+                stem = _strip_prefix(path, "/api/annotations/")
+                table_state = _load_table_state(reports_root, stem).to_dict()
+                payload = self._read_json_body()
+                annotation = ground_truth_from_dict(
+                    payload,
+                    image_name=stem,
+                    image_path=table_state.get("image_path"),
+                )
+                output_path = _annotation_path(stem, root=annotation_store)
+                save_ground_truth(annotation, output_path)
+                self._send_json(
+                    {
+                        "ok": True,
+                        "ground_truth": annotation.to_dict(),
+                        "storage": _display_path(output_path),
+                    }
+                )
+                return
             if not path.startswith("/api/review/"):
                 self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
                 return
             stem = _strip_prefix(path, "/api/review/")
             report_dir = _safe_report_dir(reports_root, stem)
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            payload = self._read_json_body()
             review = review_feedback_from_dict(payload, image_name=stem)
             output_path = report_dir / "review_v1.json"
             output_path.write_text(
@@ -118,6 +187,63 @@ def _make_handler(reports_root: Path) -> type[BaseHTTPRequestHandler]:
                 encoding="utf-8",
             )
             self._send_json({"ok": True, "review": review.to_dict()})
+
+        def _handle_post(self) -> None:
+            path = unquote(urlparse(self.path).path)
+            prefix = "/api/experiments/evidence/"
+            if not path.startswith(prefix):
+                self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            relative = _strip_prefix(path, prefix)
+            parts = relative.split("/")
+            if len(parts) != 2:
+                raise ValueError(
+                    "experiment path must be /api/experiments/evidence/<image>/<ball_id>"
+                )
+            stem, ball_id_text = parts
+            ball_id = int(ball_id_text)
+            payload = self._read_json_body()
+            with experiment_cache_lock:
+                context = _experiment_context(
+                    reports_root,
+                    stem,
+                    experiment_cache,
+                )
+            annotation_payload = _load_annotation_payload(
+                reports_root,
+                stem,
+                annotations_root=annotation_store,
+            )["ground_truth"]
+            ground_truth_ball = next(
+                (
+                    item
+                    for item in annotation_payload.get("balls", [])
+                    if int(item.get("ball_id", -1)) == ball_id
+                ),
+                None,
+            )
+            result = run_evidence_experiment(
+                source_image=context["source_image"],
+                table_state=context["table_state"],
+                ball_id=ball_id,
+                evidence_settings=context["evidence_settings"],
+                parameters=payload.get("parameters") or payload,
+                ground_truth_ball=ground_truth_ball,
+                global_cloth_model=context["global_cloth_model"],
+                full_table_evidence_maps=context["full_table_evidence_maps"],
+            )
+            self._send_json(result)
+
+        def _read_json_body(self) -> dict[str, Any]:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 2_000_000:
+                raise ValueError("request body is too large")
+            if length <= 0:
+                return {}
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("JSON request body must be an object")
+            return payload
 
         def _send_json(
             self,
@@ -169,14 +295,107 @@ def _list_reports(reports_root: Path) -> list[dict[str, Any]]:
 
 
 def _load_table_state_payload(reports_root: Path, stem: str) -> dict[str, Any]:
-    report_dir = _safe_report_dir(reports_root, stem)
-    report = json.loads((report_dir / "report.json").read_text(encoding="utf-8"))
-    table_state = table_state_from_legacy_report(report, report_stem=stem)
+    table_state = _load_table_state(reports_root, stem)
     return {
         "table_state": table_state.to_dict(),
         "review_feedback": _load_review_payload(reports_root, stem)["review_feedback"],
         "assets_base": f"/assets/{stem}/",
     }
+
+
+def _load_table_state(reports_root: Path, stem: str) -> Any:
+    report_dir = _safe_report_dir(reports_root, stem)
+    report = json.loads((report_dir / "report.json").read_text(encoding="utf-8"))
+    return table_state_from_legacy_report(report, report_stem=stem)
+
+
+def _load_annotation_payload(
+    reports_root: Path,
+    stem: str,
+    *,
+    annotations_root: Path | None = None,
+) -> dict[str, Any]:
+    table_state = _load_table_state(reports_root, stem).to_dict()
+    path = _annotation_path(stem, root=annotations_root)
+    if path.is_file():
+        value = load_ground_truth(
+            path,
+            image_name=stem,
+            image_path=table_state.get("image_path"),
+        )
+    else:
+        value = empty_ground_truth(
+            image_name=stem,
+            image_path=table_state.get("image_path"),
+        )
+    return {
+        "ground_truth": value.to_dict(),
+        "storage": _display_path(path),
+    }
+
+
+def _annotation_path(stem: str, *, root: Path | None = None) -> Path:
+    if not stem or stem in {".", ".."} or "/" in stem or "\\" in stem:
+        raise ValueError("invalid image stem")
+    annotation_root = root or PROJECT_ROOT / "benchmarks" / "annotations"
+    return annotation_root / f"{stem}.json"
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _experiment_context(
+    reports_root: Path,
+    stem: str,
+    cache: dict[str, Any],
+) -> dict[str, Any]:
+    report_path = _safe_report_dir(reports_root, stem) / "report.json"
+    cache_key = (stem, report_path.stat().st_mtime_ns)
+    if cache.get("key") == cache_key:
+        return cache["value"]
+
+    table_state = _load_table_state(reports_root, stem).to_dict()
+    source_path_value = table_state.get("image_path")
+    if not source_path_value:
+        raise ValueError("table state does not contain source image_path")
+    source_path = resolve_path(source_path_value)
+    source_image = cv2.imread(str(source_path), cv2.IMREAD_COLOR)
+    if source_image is None:
+        raise FileNotFoundError(f"Could not read source image: {source_path}")
+    detector_config = load_yaml("configs/detector_classical.yaml")
+    evidence_settings = dict(detector_config.get("evidence_maps") or {})
+    cloth_balls = [
+        {
+            "source_refined_center_px": ball.get("source_px"),
+            "source_radius_px": ball.get("radius_px"),
+        }
+        for ball in table_state.get("balls", [])
+    ]
+    global_cloth = estimate_global_cloth_reference(
+        source_image=source_image,
+        table_corners_px=table_state.get("table_corners_px"),
+        balls=cloth_balls,
+        settings=evidence_settings,
+    )
+    full_maps = compute_full_table_evidence_maps(
+        source_image=source_image,
+        table_corners_px=table_state.get("table_corners_px"),
+        settings={**evidence_settings, "global_cloth_model": global_cloth},
+    )
+    value = {
+        "table_state": table_state,
+        "source_image": source_image,
+        "evidence_settings": evidence_settings,
+        "global_cloth_model": global_cloth,
+        "full_table_evidence_maps": full_maps,
+    }
+    cache.clear()
+    cache.update({"key": cache_key, "value": value})
+    return value
 
 
 def _load_review_payload(reports_root: Path, stem: str) -> dict[str, Any]:

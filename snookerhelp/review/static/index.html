@@ -68,6 +68,8 @@
           </div>
           <div id="mapControls" class="map-controls"></div>
           <div id="layerControls" class="layer-controls"></div>
+          <div id="experimentControls" class="tool-card"></div>
+          <div id="ellipseEditorControls" class="tool-card"></div>
         </section>
 
         <section class="subpanel image-subpanel">
@@ -125,6 +127,9 @@
       <p><strong>Cluster labels</strong>: `P1` / `I2` show perimeter/interior shell. `Txx` is a diagnostic outside-in perimeter-walk rank. Use the source-panel Print order button for the full path if labels overlap.</p>
       <p><strong>Center cross</strong>: center of the row's observed ellipse or physical projection. The final source-pixel center remains a separate green reference cross.</p>
       <p><strong>Evidence-view score</strong>: diagnostic score for comparing rows. It combines physical-outline residual, accepted point count, inlier ratio, and whether an ellipse was fitted. It is not ground truth.</p>
+      <p><strong>Live experiment</strong>: backend recomputation of the selected map, boundary points, rejected points, ellipse, and decomposed diagnostic score. It is transient and never changes the production estimate.</p>
+      <p><strong>Perfect ellipse</strong>: a human image-space annotation. Copy the current observed ellipse, drag its center and axis handles over the source-color crop, then save. This is independent ground truth for parameter experiments; it does not need camera calibration and does not overwrite detector output.</p>
+      <p><strong>Annotation score</strong>: measured agreement with the saved perfect ellipse. Unlike the diagnostic evidence-view score, this one is ground-truth based.</p>
       <p><strong>Add-back diagnostics</strong>: text-only diagnostics that show whether selected rejected-point categories or raw arc combinations improved the fit. Only strict cluster-combination promotions change the exported center.</p>
       <p><strong>B/C/L color reference</strong>: ball-vs-cloth probability, chroma difference, and Lab Delta-E use the active cloth reference shown in Image evidence. In v1.3.9 this is global table cloth when available; the old local annulus remains visible as a diagnostic because it can be contaminated by neighboring balls in clusters.</p>
       <p><strong>Final source center</strong>: the exported source pixel comes from the configured final map policy: ball-vs-cloth probability by default, chroma difference for green/blue/brown, with fallback to the older source center if that map fails.</p>

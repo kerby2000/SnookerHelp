@@ -104,7 +104,7 @@ def compute_ball_evidence_maps(
         inner_mask = distance <= radius * 0.45
 
     local_cloth_lab = _median_lab(lab, cloth_mask)
-    ball_lab = _median_lab(lab, inner_mask)
+    sampled_ball_lab = _median_lab(lab, inner_mask)
     global_cloth_model = _global_cloth_model_from_settings(cfg)
     cloth_reference_mode = str(cfg.get("cloth_reference_mode", "global")).lower()
     use_global_cloth = (
@@ -121,6 +121,18 @@ def compute_ball_evidence_maps(
         if use_global_cloth and global_cloth_model is not None
         else int(np.count_nonzero(cloth_mask))
     )
+    active_ball_lab = sampled_ball_lab
+    ball_reference_source = "selected_ball_inner_disk"
+    override_ball_lab = cfg.get("ball_reference_lab")
+    if override_ball_lab is not None:
+        try:
+            active_ball_lab = np.asarray(override_ball_lab, dtype=np.float32).reshape(3)
+            ball_reference_source = str(
+                cfg.get("ball_reference_source") or "explicit_ball_reference_lab"
+            )
+        except (TypeError, ValueError):
+            active_ball_lab = sampled_ball_lab
+            ball_reference_source = "selected_ball_inner_disk_invalid_override_fallback"
 
     full_table_maps = cfg.get("_full_table_evidence_maps")
     use_full_table_maps = use_global_cloth and isinstance(full_table_maps, FullTableEvidenceMaps)
@@ -157,7 +169,15 @@ def compute_ball_evidence_maps(
         display_normalization = "roi_local_percentile_5_98"
         normalization_scope = "roi_valid_pixels" if use_global_cloth else "roi_inner_ball_and_cloth_annulus"
         full_table_summary = None
-    probability = _ball_probability_map(lab, active_cloth_lab, ball_lab, lab_delta_norm, chroma_norm, label)
+    probability = _ball_probability_map(
+        lab,
+        active_cloth_lab,
+        active_ball_lab,
+        lab_delta_norm,
+        chroma_norm,
+        label,
+        cfg,
+    )
     physical_band = _physical_band_score(crop.shape[:2], roi, sphere_projection, cfg)
     weights = _class_weights(label)
     combined = np.clip(
@@ -173,14 +193,20 @@ def compute_ball_evidence_maps(
     gradient_x = cv2.Sobel(gradient_source, cv2.CV_32F, 1, 0, ksize=3)
     gradient_y = cv2.Sobel(gradient_source, cv2.CV_32F, 0, 1, ksize=3)
 
-    local_separation_lab = float(np.linalg.norm(ball_lab - local_cloth_lab))
-    local_separation_chroma = float(np.linalg.norm(ball_lab[1:3] - local_cloth_lab[1:3]))
-    active_separation_lab = float(np.linalg.norm(ball_lab - active_cloth_lab))
-    active_separation_chroma = float(np.linalg.norm(ball_lab[1:3] - active_cloth_lab[1:3]))
+    local_separation_lab = float(np.linalg.norm(sampled_ball_lab - local_cloth_lab))
+    local_separation_chroma = float(
+        np.linalg.norm(sampled_ball_lab[1:3] - local_cloth_lab[1:3])
+    )
+    active_separation_lab = float(np.linalg.norm(active_ball_lab - active_cloth_lab))
+    active_separation_chroma = float(
+        np.linalg.norm(active_ball_lab[1:3] - active_cloth_lab[1:3])
+    )
     active_color_model = {
         "cloth_reference_mode": "global_table_cloth" if use_global_cloth else "local_annulus",
         "cloth_lab": _round_array(active_cloth_lab),
-        "ball_lab": _round_array(ball_lab),
+        "ball_lab": _round_array(active_ball_lab),
+        "sampled_ball_lab": _round_array(sampled_ball_lab),
+        "ball_reference_source": ball_reference_source,
         "separation_lab": round(active_separation_lab, 4),
         "separation_chroma": round(active_separation_chroma, 4),
         "cloth_sample_count": active_cloth_sample_count,
@@ -189,7 +215,7 @@ def compute_ball_evidence_maps(
     }
     local_color_model = {
         "cloth_lab": _round_array(local_cloth_lab),
-        "ball_lab": _round_array(ball_lab),
+        "ball_lab": _round_array(sampled_ball_lab),
         "separation_lab": round(local_separation_lab, 4),
         "separation_chroma": round(local_separation_chroma, 4),
         "cloth_sample_count": int(np.count_nonzero(cloth_mask)),
@@ -212,6 +238,16 @@ def compute_ball_evidence_maps(
             "minimum_value_for_color_model": float(cfg.get("minimum_value_for_color_model", 28.0)),
             "highlight_value_limit": float(cfg.get("highlight_value_limit", 245.0)),
             "ball_inner_radius_factor": float(cfg.get("ball_inner_radius_factor", 0.55)),
+            "ball_reference_source": ball_reference_source,
+            "probability_offset_factor": float(
+                cfg.get("probability_offset_factor", 0.20)
+            ),
+            "probability_scale_factor": float(
+                cfg.get("probability_scale_factor", 0.20)
+            ),
+            "green_blue_chroma_weight": float(
+                cfg.get("green_blue_chroma_weight", 0.70)
+            ),
             "cloth_inner_radius_factor": float(cfg.get("cloth_inner_radius_factor", 1.25)),
             "cloth_outer_radius_factor": float(cfg.get("cloth_outer_radius_factor", 1.95)),
             "global_cloth_exclusion_radius_factor": float(
@@ -427,6 +463,33 @@ def sample_map_at_points(
     return values[ys[valid], xs[valid]].astype(np.float32)
 
 
+def evidence_map_array(
+    evidence_maps: BallEvidenceMaps,
+    key: str,
+) -> np.ndarray:
+    mapping = {
+        "gray_edge": "gray_edge",
+        "lab_delta_e": "lab_delta_e",
+        "chroma_difference": "chroma_difference",
+        "ball_vs_cloth_probability": "ball_probability",
+        "physical_projection_band": "physical_band_score",
+        "combined_boundary_score": "combined_boundary_score",
+    }
+    attribute = mapping.get(str(key))
+    if attribute is None:
+        raise KeyError(f"Unknown evidence map: {key}")
+    return getattr(evidence_maps, attribute)
+
+
+def evidence_map_uses_outward_drop(key: str) -> bool:
+    return str(key) in {
+        "lab_delta_e",
+        "chroma_difference",
+        "ball_vs_cloth_probability",
+        "combined_boundary_score",
+    }
+
+
 def _global_cloth_model_from_settings(cfg: dict[str, Any]) -> dict[str, Any] | None:
     model = cfg.get("global_cloth_model")
     if not isinstance(model, dict) or model.get("status") != "computed":
@@ -566,17 +629,28 @@ def _ball_probability_map(
     lab_delta_norm: np.ndarray,
     chroma_norm: np.ndarray,
     label: str,
+    settings: dict[str, Any] | None = None,
 ) -> np.ndarray:
+    cfg = settings or {}
     direction = (ball_lab - cloth_lab).astype(np.float32)
     norm = float(np.linalg.norm(direction))
     if norm < 2.0:
         return np.maximum(lab_delta_norm, chroma_norm).astype(np.float32)
     projection = np.tensordot(lab - cloth_lab[None, None, :], direction / norm, axes=([2], [0]))
     ball_projection = float(np.dot(ball_lab - cloth_lab, direction / norm))
-    scale = max(2.0, abs(ball_projection) * 0.20)
-    probability = 1.0 / (1.0 + np.exp(-(projection - 0.20 * ball_projection) / scale))
+    offset_factor = float(cfg.get("probability_offset_factor", 0.20))
+    scale_factor = float(cfg.get("probability_scale_factor", 0.20))
+    scale = max(2.0, abs(ball_projection) * max(0.01, scale_factor))
+    probability = 1.0 / (
+        1.0 + np.exp(-(projection - offset_factor * ball_projection) / scale)
+    )
     if label.lower() in {"green", "blue"}:
-        probability = np.maximum(probability, 0.70 * chroma_norm + 0.30 * lab_delta_norm)
+        chroma_weight = float(cfg.get("green_blue_chroma_weight", 0.70))
+        chroma_weight = float(np.clip(chroma_weight, 0.0, 1.0))
+        probability = np.maximum(
+            probability,
+            chroma_weight * chroma_norm + (1.0 - chroma_weight) * lab_delta_norm,
+        )
     return np.clip(probability, 0.0, 1.0).astype(np.float32)
 
 

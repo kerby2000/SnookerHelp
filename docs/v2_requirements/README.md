@@ -1,8 +1,9 @@
-# SnookerHelp Recognition v2 Requirements Index
+# Detailed recognition requirements
 
-This folder is the working requirements set for a fresh recognition v2 implementation.
-
-The older monolithic document, `docs/recognition_v2_requirements.md`, remains as a capture/archive document. Implementation work should use the smaller files in this folder.
+These files contain detailed contracts for acceptance gates that are not yet
+complete. They are implemented incrementally in the existing codebase; this is
+not a parallel rewrite. The authoritative order and status live in
+[`../execution_plan.md`](../execution_plan.md).
 
 ## Reading order
 
@@ -16,20 +17,7 @@ The older monolithic document, `docs/recognition_v2_requirements.md`, remains as
 8. [07_confidence_model.md](07_confidence_model.md)
 9. [08_review_ui.md](08_review_ui.md)
 10. [09_implementation_plan.md](09_implementation_plan.md)
-11. [10_codex_task_01_schema_and_benchmark.md](10_codex_task_01_schema_and_benchmark.md)
-
-## Implementation order
-
-The implementation order is intentionally not solver-first.
-
-1. [Task 01](10_codex_task_01_schema_and_benchmark.md): data contracts, scenario files, and benchmark schema check.
-2. Scenario/validation formats and benchmark runner extensions.
-3. Pipeline skeleton.
-4. Evidence model.
-5. Loose-ball solver.
-6. Cluster graph solver.
-7. Confidence model.
-8. Review UI.
+Implementation order is defined only in `docs/execution_plan.md`.
 
 ## Existing docs used as source material
 
@@ -43,12 +31,10 @@ The implementation order is intentionally not solver-first.
 | `docs/physical_validation_tools.md` | touching, cushion, spot, repeatability validation |
 | `docs/coordinate_accuracy_validation.md` | manual annotation, accuracy metrics, repeatability |
 | `docs/image_debug_reports.md` | visual report/review workflow lessons |
-| `docs/refactor_plan_v1.md` | clean architecture and UI language rules |
-| `docs/proposal.md` | generic cluster graph strategy from external review |
-| `docs/recognition_strategy_review_package.md` | current failure modes and constraints |
+| `docs/execution_plan.md` | active implementation order, evidence from earlier audits, and promotion gates |
 
 ## Rule for old docs
 
-Old docs are evidence and history. They are not automatically requirements.
-
-If a statement conflicts with these v2 files, the v2 requirement files win.
+Completed plans and migration diaries are removed from the active tree. Their
+history remains available in Git checkpoint `155e727`. If a statement here
+conflicts with `docs/execution_plan.md`, the execution plan wins.

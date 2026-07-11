@@ -65,7 +65,7 @@ python -m snookerhelp.tools.generate_reports dataset `
   --output outputs/reports
 ```
 
-## Visual OK/NOK feedback workflow
+## Interactive evidence and ground-truth workflow
 
 The primary workflow is the schema-driven v1 local interactive review UI:
 
@@ -79,29 +79,51 @@ Equivalent module entrypoint:
 python -m snookerhelp.tools.review --reports outputs/reports --port 8770
 ```
 
-This opens a v1 review tool with product-language sections:
+This opens the schema-driven v1 workbench with:
 
 - Pixels
+- Evidence layers
 - Image evidence
 - Physical model
 - Final estimate
 - Confidence
-- Manual correction
+- Ball statistics
+- Live evidence experiment
+- Perfect ellipse ground truth
 
-The UI saves human feedback beside each immutable report:
+The machine report remains immutable:
 
 ```text
 outputs/reports/<image_stem>/report.json   # algorithm output, do not edit
-outputs/reports/<image_stem>/review_v1.json # v1 human review and manual corrections
 ```
 
 `report.json` is still the immutable machine report. The v1 server adapts it to
-`snookerhelp.table_state.v1` before the browser sees it. Legacy `review.json`
-files remain readable, but new v1 review saves go to `review_v1.json`.
+`snookerhelp.table_state.v1` before the browser sees it.
 
-`review_v1.json` stores the human layer: OK/NOK/needs-review/missing decisions, issue
-tags, confidence, comments, manual center/radius/ellipse/cushion-line edits, and
-missing-ball hints. Manual edits do not overwrite algorithm output.
+The perfect-ellipse editor stores independent image-space ground truth under:
+
+```text
+benchmarks/annotations/<image_stem>.json
+```
+
+Use `Copy selected fit` to initialize the annotation, then drag the cyan center,
+major-axis, and minor-axis handles over the source-color crop. Saving records a
+`snookerhelp.ground_truth.v1` ellipse; it never changes `report.json` or the
+production source center. This is useful before camera calibration because it
+measures image boundary extraction directly. It is not automatically the true
+3D sphere center when the silhouette is occluded.
+
+The live experiment panel calls the backend and recomputes the evidence map,
+accepted/rejected boundary points, ellipse, and decomposed diagnostic score.
+Controls include evidence map, selected/red/specific-ball color reference,
+probability scaling, radial search range, angular sample count, outlier filtering,
+and neighbor filtering. Its result appears as a transient evidence row and does
+not overwrite machine output.
+
+The two scores have different meanings:
+
+- evidence-view score: internal image/physics agreement; not ground truth;
+- annotation score: measured ellipse agreement with the saved perfect ellipse.
 
 For elongated edge/cushion balls, do not treat any 2D overlay as ground truth.
 Sometimes the correct physical center is ambiguous in the source image. The v1
@@ -109,49 +131,19 @@ UI groups the underlying evidence into image evidence, physical model, final
 estimate, and confidence. It should not ask the user to approve prototype
 candidate names.
 
-The interactive UI also shows both `legacy_review_confidence` and the
-experimental `physics_first_review_confidence` and
-`physics_c_only_review_confidence`. The displayed auto confidence uses a
-physics score only when the sphere projection is plausible.
-
 See [ball_geometry_model.md](ball_geometry_model.md) for the current fitting
 model and why image evidence and physical model evidence affect confidence
 differently.
 
-### Missing balls
-
-Use the full-table source panel:
-
-1. choose the label in the `Add missing ball` controls;
-2. optionally type a note;
-3. click `Add missing ball: off` so it changes to `click table`;
-4. click the missing ball center in the source image.
-
-The v1 UI adds an `M1`, `M2`, ... marker and stores missing-ball feedback under
-`missing_balls` in `review_v1.json`.
-
-### Cushion-line edits
-
-For a selected ball:
-
-1. click `Line` or open the `Cushion Line` tab;
-2. drag the cyan line handles shown inside the zoom crop;
-3. save the review.
-
-The handles are local to the visible crop. The saved correction is stored as
-`manual_correction.cushion_line_px`.
-
 ### Confidence
 
-The confidence slider is optional. Auto confidence is shown only as context.
-`human_confidence` is exported only after the slider is explicitly moved.
-If you do not use the slider, exported feedback contains
-`"human_confidence": null`.
+Current confidence is algorithmic and decomposed. It is not calibrated accuracy
+and it does not use the perfect ellipse. Ground-truth comparison is reported
+separately so an algorithm cannot award itself a high score merely by agreeing
+with its own physical prior.
 
-The static `report.html` page is now a read-only QA artifact. It does not store
-review feedback and does not export browser-local feedback. Use
-`tools/review_reports.py` for all OK/NOK decisions, missing balls, and manual
-corrections.
+The static `report.html` page remains a read-only QA artifact. Use the local v1
+workbench for experiments and perfect-ellipse annotations.
 
 ### Diagnostic evidence maps
 
@@ -218,6 +210,21 @@ python tools/benchmark_model_scoring.py `
 
 This summarizes whether physical-model-first scores raise or lower automatic
 confidence across the dataset.
+
+## Benchmark detector ellipses against perfect ellipses
+
+```powershell
+python tools/benchmark_ellipse_annotations.py `
+  --report outputs/reports/DSC00540/report.json `
+  --annotations benchmarks/annotations/DSC00540.json `
+  --output benchmarks/results/DSC00540 `
+  --tolerance-px 3
+```
+
+The JSON and CSV report source-center error, ellipse contour RMS, axis/angle
+errors, annotation score, and per-evidence-map summaries. These are measured
+against human image-space ground truth and are the promotion gate for future
+evidence/cluster changes.
 
 ## Scenario metadata
 

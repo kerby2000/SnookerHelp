@@ -1,10 +1,12 @@
-const UI_VERSION = "v1.5.6";
+const UI_VERSION = "v1.6.0";
 
 const state = {
   reports: [],
   stem: null,
   tableState: null,
   review: null,
+  annotation: null,
+  annotationStorage: "",
   assetsBase: "",
   selectedId: null,
   cropBackground: "source",
@@ -15,6 +17,25 @@ const state = {
     finalCenter: true,
     roughCenter: false,
     neighborEllipses: false,
+    groundTruthEllipse: true,
+  },
+  ellipseEditor: {
+    active: false,
+    draft: null,
+    dirty: false,
+    saving: false,
+    message: "",
+    dragMode: null,
+    pointerId: null,
+  },
+  experiment: {
+    ballId: null,
+    running: false,
+    error: "",
+    result: null,
+    requestId: 0,
+    timer: null,
+    parameters: null,
   },
   sourceViewport: {
     scale: 1,
@@ -80,9 +101,14 @@ async function init() {
 async function loadReport(stem, selectedBallId = null) {
   state.stem = stem;
   $("reportSelect").value = stem;
-  const payload = await fetchJson(`/api/table-state/${encodeURIComponent(stem)}`);
+  const [payload, annotationPayload] = await Promise.all([
+    fetchJson(`/api/table-state/${encodeURIComponent(stem)}`),
+    fetchJson(`/api/annotations/${encodeURIComponent(stem)}`),
+  ]);
   state.tableState = payload.table_state;
   state.review = payload.review_feedback;
+  state.annotation = annotationPayload.ground_truth;
+  state.annotationStorage = annotationPayload.storage || "";
   state.assetsBase = payload.assets_base;
   state.overlaySelections = null;
   state.primaryEvidenceKey = "source";
@@ -91,6 +117,7 @@ async function loadReport(stem, selectedBallId = null) {
   const firstBall = balls()[0];
   const requestedBall = balls().find((ball) => ball.ball_id === selectedBallId);
   state.selectedId = requestedBall ? requestedBall.ball_id : firstBall ? firstBall.ball_id : null;
+  resetSelectedTools();
   syncUrl();
   render();
 }
@@ -141,9 +168,7 @@ function renderSource() {
     });
     group.addEventListener("click", (event) => {
       event.stopPropagation();
-      state.selectedId = ball.ball_id;
-      syncUrl();
-      render();
+      changeSelectedBall(ball.ball_id);
     });
     svg.appendChild(group);
   }
@@ -305,6 +330,8 @@ function renderSelected() {
     renderDefinitionList("physicalModel", [["Status", "No detected ball selected"]]);
     renderDefinitionList("confidencePanel", [["Status", "No detected ball selected"]]);
     $("mapControls").innerHTML = "";
+    $("experimentControls").innerHTML = "";
+    $("ellipseEditorControls").innerHTML = "";
     return;
   }
   const evidence = ball.evidence || {};
@@ -313,6 +340,8 @@ function renderSelected() {
   $("ballPosition").textContent = `${index + 1} / ${balls().length}`;
   renderCropOverlay(ball);
   renderLayerControls(ball);
+  renderExperimentControls(ball);
+  renderEllipseEditorControls(ball);
   renderDefinitionList("imageEvidence", imageEvidenceRows(ball));
   renderDefinitionList("physicalModel", physicalModelRows(ball));
   renderDefinitionList("confidencePanel", confidenceRows(ball));
@@ -332,12 +361,13 @@ function renderCropOverlay(ball) {
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   const rasterUri = cropRasterUri(ball);
   if (rasterUri) {
+    const raster = cropRasterGeometry(ball, x0, y0, w, h);
     svg.appendChild(el("image", {
       href: assetUrl(rasterUri),
-      x: 0,
-      y: 0,
-      width: w,
-      height: h,
+      x: raster.x,
+      y: raster.y,
+      width: raster.w,
+      height: raster.h,
       preserveAspectRatio: "none",
       class: "crop-raster",
       style: cropRasterFilter(),
@@ -356,6 +386,8 @@ function renderCropOverlay(ball) {
   if (state.referenceOverlays.neighborEllipses) drawNeighborEllipses(svg, ball, x0, y0);
   if (state.referenceOverlays.roughCenter && rough) drawCross(svg, rough[0] - x0, rough[1] - y0, "rough-cross", 16);
   if (state.referenceOverlays.finalCenter && source) drawCross(svg, source[0] - x0, source[1] - y0, "center-cross", 16);
+  if (state.referenceOverlays.groundTruthEllipse) drawGroundTruthEllipse(svg, ball, x0, y0);
+  setupEllipseEditorPointerEvents(svg, x0, y0);
 }
 
 function cropViewBox(ball, x0, y0, cropWidth, cropHeight) {
@@ -403,6 +435,16 @@ function cropViewBox(ball, x0, y0, cropWidth, cropHeight) {
       if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(r)) {
         localPoints.push([cx - r, cy - r], [cx + r, cy + r]);
       }
+    }
+  }
+  const manual = activeEllipseForBall(ball);
+  if (state.referenceOverlays.groundTruthEllipse && manual?.center_px) {
+    addPoint(manual.center_px);
+    const cx = Number(manual.center_px[0]) - x0;
+    const cy = Number(manual.center_px[1]) - y0;
+    const r = Math.max(Number(manual.major_axis_px), Number(manual.minor_axis_px)) / 2;
+    if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(r)) {
+      localPoints.push([cx - r, cy - r], [cx + r, cy + r]);
     }
   }
   const image = selectedImage || {};
@@ -541,6 +583,121 @@ function drawFitCenter(svg, ball, evidenceKey, x0, y0) {
   drawCross(svg, center[0] - x0, center[1] - y0, "fit-center-cross", 13);
 }
 
+function drawGroundTruthEllipse(svg, ball, x0, y0) {
+  const model = activeEllipseForBall(ball);
+  if (!model?.center_px) return;
+  const cx = Number(model.center_px[0]) - x0;
+  const cy = Number(model.center_px[1]) - y0;
+  const major = Number(model.major_axis_px);
+  const minor = Number(model.minor_axis_px);
+  const angle = Number(model.angle_deg || 0);
+  if (![cx, cy, major, minor, angle].every(Number.isFinite)) return;
+  const node = el("ellipse", {
+    cx,
+    cy,
+    rx: major / 2,
+    ry: minor / 2,
+    transform: `rotate(${angle} ${cx} ${cy})`,
+    class: state.ellipseEditor.active ? "ground-truth-ellipse editing" : "ground-truth-ellipse",
+  });
+  node.appendChild(el("title", {}, "Saved perfect ellipse ground truth"));
+  svg.appendChild(node);
+  if (!state.ellipseEditor.active) return;
+
+  const radians = angle * Math.PI / 180;
+  const ux = Math.cos(radians);
+  const uy = Math.sin(radians);
+  const majorHandle = [cx + major * 0.5 * ux, cy + major * 0.5 * uy];
+  const minorHandle = [cx - minor * 0.5 * uy, cy + minor * 0.5 * ux];
+  svg.appendChild(el("line", {
+    x1: cx,
+    y1: cy,
+    x2: majorHandle[0],
+    y2: majorHandle[1],
+    class: "ellipse-editor-axis major",
+  }));
+  svg.appendChild(el("line", {
+    x1: cx,
+    y1: cy,
+    x2: minorHandle[0],
+    y2: minorHandle[1],
+    class: "ellipse-editor-axis minor",
+  }));
+  for (const [mode, point] of [
+    ["center", [cx, cy]],
+    ["major", majorHandle],
+    ["minor", minorHandle],
+  ]) {
+    const handle = el("circle", {
+      cx: point[0],
+      cy: point[1],
+      r: mode === "center" ? 3.2 : 2.7,
+      class: `ellipse-editor-handle ${mode}`,
+      "data-ellipse-handle": mode,
+    });
+    handle.addEventListener("pointerdown", (event) => beginEllipseDrag(event, mode));
+    svg.appendChild(handle);
+  }
+}
+
+function setupEllipseEditorPointerEvents(svg, x0, y0) {
+  svg.onpointermove = (event) => {
+    const editor = state.ellipseEditor;
+    if (!editor.active || !editor.dragMode || !editor.draft) return;
+    const local = svgClientPoint(svg, event.clientX, event.clientY);
+    if (!local) return;
+    const point = [local[0] + x0, local[1] + y0];
+    const draft = editor.draft;
+    if (editor.dragMode === "center") {
+      draft.center_px = point;
+    } else {
+      const dx = point[0] - Number(draft.center_px[0]);
+      const dy = point[1] - Number(draft.center_px[1]);
+      if (editor.dragMode === "major") {
+        draft.major_axis_px = Math.max(4, 2 * Math.hypot(dx, dy));
+        draft.angle_deg = (Math.atan2(dy, dx) * 180 / Math.PI + 180) % 180;
+      } else if (editor.dragMode === "minor") {
+        const radians = Number(draft.angle_deg || 0) * Math.PI / 180;
+        const projection = -Math.sin(radians) * dx + Math.cos(radians) * dy;
+        draft.minor_axis_px = Math.max(4, 2 * Math.abs(projection));
+      }
+    }
+    normalizeEllipseDraft(draft);
+    editor.dirty = true;
+    renderCropOverlay(selectedBall());
+    renderEllipseEditorControls(selectedBall());
+  };
+  const stop = (event) => {
+    if (state.ellipseEditor.pointerId != null) {
+      svg.releasePointerCapture?.(state.ellipseEditor.pointerId);
+    }
+    state.ellipseEditor.dragMode = null;
+    state.ellipseEditor.pointerId = null;
+    event?.preventDefault?.();
+  };
+  svg.onpointerup = stop;
+  svg.onpointercancel = stop;
+}
+
+function beginEllipseDrag(event, mode) {
+  if (!state.ellipseEditor.active) return;
+  state.ellipseEditor.dragMode = mode;
+  state.ellipseEditor.pointerId = event.pointerId;
+  $("cropOverlay").setPointerCapture?.(event.pointerId);
+  event.stopPropagation();
+  event.preventDefault();
+}
+
+function svgClientPoint(svg, clientX, clientY) {
+  const matrix = svg.getScreenCTM?.();
+  if (!matrix) return null;
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  const local = point.matrixTransform(matrix.inverse());
+  return [local.x, local.y];
+}
+
 function drawScaleBar(svg, ball, viewBox) {
   const radiusPx = Number(ball.radius_px || 0);
   const radiusMm = Number(ball.radius_mm || 26.25);
@@ -560,6 +717,374 @@ function renderLayerControls(ball) {
   ensureOverlaySelections(ball);
   renderMapControls(ball);
   renderOverlayMatrix(ball);
+}
+
+function renderExperimentControls(ball) {
+  if (!ball) {
+    $("experimentControls").innerHTML = "";
+    return;
+  }
+  ensureExperimentParameters(ball);
+  const params = state.experiment.parameters;
+  const result = experimentForBall(ball) ? state.experiment.result : null;
+  const score = result?.experiment?.view_score;
+  const annotation = result?.experiment?.annotation_comparison;
+  const baselineAnnotation = result?.baseline?.annotation_comparison;
+  const referenceBalls = balls().filter((item) => item.source_px);
+  const status = state.experiment.running
+    ? "Recomputing map, points, ellipse, and scores…"
+    : state.experiment.error
+      ? `Error: ${state.experiment.error}`
+      : result
+        ? `Computed · diagnostic ${evidenceViewScorePlain(score)}${annotation?.status === "computed" ? ` · annotation ${fmt(annotation.annotation_score)}% / ${fmt(annotation.contour_rms_error_px)} px RMS` : " · no saved perfect ellipse"}`
+        : "Ready. Changing a control runs a transient backend experiment.";
+  const comparison = result?.comparison?.status === "computed"
+    ? `vs production: center ${fmt(result.comparison.center_shift_px)} px, major ${signedFmt(result.comparison.major_axis_delta_px)} px, minor ${signedFmt(result.comparison.minor_axis_delta_px)} px`
+    : "Production output is never overwritten by this panel.";
+  const annotationComparison = annotation?.status === "computed"
+    ? `perfect ellipse: ${fmt(annotation.annotation_score)}%; center ${fmt(annotation.center_error_px)} px; contour RMS ${fmt(annotation.contour_rms_error_px)} px${baselineAnnotation?.status === "computed" ? ` · production ${fmt(baselineAnnotation.annotation_score)}%` : ""}`
+    : "Save a perfect ellipse to measure actual fit error.";
+  $("experimentControls").innerHTML = `
+    <div class="tool-card-header">
+      <strong>Live evidence experiment</strong>
+      <span class="tool-status ${state.experiment.error ? "error" : ""}">${escapeHtml(status)}</span>
+    </div>
+    <div class="experiment-grid">
+      <label>Evidence map
+        <select data-exp-param="map_key">
+          ${MAP_ASSET_ORDER.map((key) => `<option value="${escapeAttr(key)}" ${params.map_key === key ? "selected" : ""}>${escapeHtml(evidenceMapLabel(key))}</option>`).join("")}
+        </select>
+      </label>
+      <label>Ball-color reference
+        <select data-exp-param="ball_reference_mode">
+          <option value="selected_ball" ${params.ball_reference_mode === "selected_ball" ? "selected" : ""}>selected ball interior</option>
+          <option value="median_red_balls" ${params.ball_reference_mode === "median_red_balls" ? "selected" : ""}>median of detected reds</option>
+          <option value="reference_ball" ${params.ball_reference_mode === "reference_ball" ? "selected" : ""}>specific ball</option>
+        </select>
+      </label>
+      <label>Reference ball
+        <select data-exp-param="reference_ball_id" ${params.ball_reference_mode === "reference_ball" ? "" : "disabled"}>
+          ${referenceBalls.map((item) => `<option value="${item.ball_id}" ${Number(params.reference_ball_id) === Number(item.ball_id) ? "selected" : ""}>#${item.ball_id} ${escapeHtml(item.label)}</option>`).join("")}
+        </select>
+      </label>
+      ${experimentSlider("probability_offset_factor", "Probability offset", params.probability_offset_factor, -0.25, 1.25, 0.01)}
+      ${experimentSlider("probability_scale_factor", "Probability scale", params.probability_scale_factor, 0.02, 1.0, 0.01)}
+      ${experimentSlider("ball_inner_radius_factor", "Ball sample radius", params.ball_inner_radius_factor, 0.20, 0.95, 0.01)}
+      ${experimentSlider("map_boundary_minimum_strength", "Minimum boundary strength", params.map_boundary_minimum_strength, 0.0, 0.5, 0.005)}
+      ${experimentSlider("map_boundary_inner_radius_factor", "Search inner radius", params.map_boundary_inner_radius_factor, 0.10, 1.20, 0.01)}
+      ${experimentSlider("map_boundary_outer_radius_factor", "Search outer radius", params.map_boundary_outer_radius_factor, 0.70, 2.50, 0.01)}
+      ${experimentSlider("map_boundary_angle_count", "Angular samples", params.map_boundary_angle_count, 24, 360, 12)}
+      <label class="experiment-checkbox"><input type="checkbox" data-exp-param="boundary_outlier_filter_enabled" ${params.boundary_outlier_filter_enabled ? "checked" : ""}> robust outlier filtering</label>
+      <label class="experiment-checkbox"><input type="checkbox" data-exp-param="neighbor_ellipse_rejection_enabled" ${params.neighbor_ellipse_rejection_enabled ? "checked" : ""}> neighbor ownership filtering</label>
+    </div>
+    <div class="tool-actions">
+      <button type="button" class="small-button primary" data-exp-run ${state.experiment.running ? "disabled" : ""}>Recompute now</button>
+      <button type="button" class="small-button" data-exp-reset>Reset parameters</button>
+    </div>
+    <p class="tool-result">${escapeHtml(comparison)}</p>
+    <p class="tool-result ground-truth-result">${escapeHtml(annotationComparison)}</p>
+  `;
+  $("experimentControls").querySelectorAll("[data-exp-param]").forEach((input) => {
+    const update = () => {
+      const key = input.dataset.expParam;
+      if (input.type === "checkbox") params[key] = input.checked;
+      else if (input.tagName === "SELECT" && ["map_key", "ball_reference_mode"].includes(key)) params[key] = input.value;
+      else params[key] = Number(input.value);
+      if (input.type === "range") {
+        const output = input.closest("label")?.querySelector("output");
+        if (output) output.textContent = formatParameterValue(params[key]);
+      }
+      if (key === "ball_reference_mode") renderExperimentControls(ball);
+      scheduleEvidenceExperiment();
+    };
+    input.addEventListener(input.type === "range" ? "input" : "change", update);
+  });
+  $("experimentControls").querySelector("[data-exp-run]")?.addEventListener("click", () => runEvidenceExperiment());
+  $("experimentControls").querySelector("[data-exp-reset]")?.addEventListener("click", () => {
+    state.experiment.parameters = defaultExperimentParameters(ball);
+    state.experiment.error = "";
+    renderExperimentControls(ball);
+    runEvidenceExperiment();
+  });
+}
+
+function experimentSlider(key, label, value, min, max, step) {
+  return `
+    <label class="experiment-slider">${escapeHtml(label)}
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${escapeAttr(value)}" data-exp-param="${escapeAttr(key)}">
+      <output>${escapeHtml(formatParameterValue(value))}</output>
+    </label>
+  `;
+}
+
+function defaultExperimentParameters(ball) {
+  const maps = ball.evidence?.diagnostics?.evidence_maps || {};
+  const color = maps.color_model_parameters || {};
+  const variant = evidenceVariant(ball, recommendedEvidenceKey(ball));
+  const filter = variant?.filter || {};
+  const firstRed = balls().find((item) => String(item.label).toLowerCase() === "red");
+  return {
+    map_key: recommendedEvidenceKey(ball) === "source" ? "ball_vs_cloth_probability" : recommendedEvidenceKey(ball),
+    ball_reference_mode: "selected_ball",
+    reference_ball_id: firstRed?.ball_id || ball.ball_id,
+    probability_offset_factor: Number(color.probability_offset_factor ?? 0.20),
+    probability_scale_factor: Number(color.probability_scale_factor ?? 0.20),
+    ball_inner_radius_factor: Number(color.ball_inner_radius_factor ?? 0.55),
+    map_boundary_minimum_strength: 0.035,
+    map_boundary_inner_radius_factor: 0.55,
+    map_boundary_outer_radius_factor: 1.45,
+    map_boundary_angle_count: 180,
+    boundary_outlier_filter_enabled: filter.status !== "disabled",
+    neighbor_ellipse_rejection_enabled: true,
+  };
+}
+
+function ensureExperimentParameters(ball) {
+  if (state.experiment.ballId !== ball.ball_id || !state.experiment.parameters) {
+    state.experiment.ballId = ball.ball_id;
+    state.experiment.parameters = defaultExperimentParameters(ball);
+    state.experiment.result = null;
+    state.experiment.error = "";
+  }
+}
+
+function experimentForBall(ball) {
+  return Boolean(ball && state.experiment.ballId === ball.ball_id && state.experiment.result);
+}
+
+function scheduleEvidenceExperiment() {
+  clearTimeout(state.experiment.timer);
+  state.experiment.timer = setTimeout(() => runEvidenceExperiment(), 350);
+}
+
+async function runEvidenceExperiment() {
+  const ball = selectedBall();
+  if (!ball || state.experiment.running) return;
+  ensureExperimentParameters(ball);
+  const requestId = ++state.experiment.requestId;
+  state.experiment.running = true;
+  state.experiment.error = "";
+  renderExperimentControls(ball);
+  try {
+    const result = await fetchJson(
+      `/api/experiments/evidence/${encodeURIComponent(state.stem)}/${ball.ball_id}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parameters: state.experiment.parameters }),
+      },
+    );
+    if (requestId !== state.experiment.requestId || state.selectedId !== ball.ball_id) return;
+    state.experiment.result = result;
+    state.cropBackground = "experiment";
+    state.primaryEvidenceKey = "experiment";
+    state.overlaySelections = {};
+    state.overlaySelections.experiment = { points: true, rejected: true, ellipse: true, center: true };
+  } catch (error) {
+    if (requestId === state.experiment.requestId) state.experiment.error = String(error.message || error);
+  } finally {
+    if (requestId === state.experiment.requestId) {
+      state.experiment.running = false;
+      renderSelected();
+      renderBallStats();
+    }
+  }
+}
+
+function renderEllipseEditorControls(ball) {
+  if (!ball) {
+    $("ellipseEditorControls").innerHTML = "";
+    return;
+  }
+  const saved = manualEllipseForBall(ball.ball_id);
+  const editor = state.ellipseEditor;
+  const model = activeEllipseForBall(ball);
+  const status = editor.message || (saved
+    ? `Saved in ${state.annotationStorage || "tracked annotations"}`
+    : "No human ellipse saved for this ball.");
+  if (!editor.active) {
+    $("ellipseEditorControls").innerHTML = `
+      <div class="tool-card-header"><strong>Perfect ellipse ground truth</strong><span class="tool-status">${escapeHtml(status)}</span></div>
+      <p class="tool-result">Copy the currently selected cream ellipse, then fit the cyan handles to the source-color silhouette. Detector output remains unchanged.</p>
+      <div class="tool-actions">
+        <button type="button" class="small-button primary" data-ellipse-copy>Copy selected fit</button>
+        ${saved ? '<button type="button" class="small-button" data-ellipse-edit>Edit saved ellipse</button><button type="button" class="small-button danger" data-ellipse-delete>Delete</button>' : ""}
+      </div>
+    `;
+    $("ellipseEditorControls").querySelector("[data-ellipse-copy]")?.addEventListener("click", () => startEllipseEditor(selectedImageModel(ball)));
+    $("ellipseEditorControls").querySelector("[data-ellipse-edit]")?.addEventListener("click", () => startEllipseEditor(saved));
+    $("ellipseEditorControls").querySelector("[data-ellipse-delete]")?.addEventListener("click", () => deletePerfectEllipse());
+    return;
+  }
+  $("ellipseEditorControls").innerHTML = `
+    <div class="tool-card-header"><strong>Editing perfect ellipse</strong><span class="tool-status">drag cyan center / major / minor handles</span></div>
+    <div class="ellipse-fields">
+      ${ellipseNumberField("center_x", "Center X", model?.center_px?.[0], 0.1)}
+      ${ellipseNumberField("center_y", "Center Y", model?.center_px?.[1], 0.1)}
+      ${ellipseNumberField("major_axis_px", "Major axis", model?.major_axis_px, 0.1)}
+      ${ellipseNumberField("minor_axis_px", "Minor axis", model?.minor_axis_px, 0.1)}
+      ${ellipseNumberField("angle_deg", "Angle", model?.angle_deg, 0.1)}
+    </div>
+    <label>Annotation note<input type="text" data-ellipse-note maxlength="300" value="${escapeAttr(editor.note || "")}" placeholder="optional visual evidence note"></label>
+    <div class="tool-actions">
+      <button type="button" class="small-button primary" data-ellipse-save ${editor.saving ? "disabled" : ""}>${editor.saving ? "Saving…" : "Save perfect ellipse"}</button>
+      <button type="button" class="small-button" data-ellipse-copy>Reset from selected fit</button>
+      <button type="button" class="small-button" data-ellipse-cancel>Cancel</button>
+    </div>
+    <p class="tool-result">${escapeHtml(status)}</p>
+  `;
+  $("ellipseEditorControls").querySelectorAll("[data-ellipse-field]").forEach((input) => {
+    input.addEventListener("input", () => updateEllipseDraftFromFields());
+  });
+  $("ellipseEditorControls").querySelector("[data-ellipse-note]")?.addEventListener("input", (event) => {
+    state.ellipseEditor.note = event.target.value;
+    state.ellipseEditor.dirty = true;
+  });
+  $("ellipseEditorControls").querySelector("[data-ellipse-save]")?.addEventListener("click", () => savePerfectEllipse());
+  $("ellipseEditorControls").querySelector("[data-ellipse-copy]")?.addEventListener("click", () => startEllipseEditor(selectedImageModel(ball)));
+  $("ellipseEditorControls").querySelector("[data-ellipse-cancel]")?.addEventListener("click", () => cancelEllipseEditor());
+}
+
+function ellipseNumberField(key, label, value, step) {
+  return `<label>${escapeHtml(label)}<input type="number" step="${step}" data-ellipse-field="${escapeAttr(key)}" value="${escapeAttr(Number(value || 0).toFixed(2))}"></label>`;
+}
+
+function startEllipseEditor(model) {
+  if (!model?.center_px || !model.major_axis_px || !model.minor_axis_px) {
+    state.ellipseEditor.message = "The selected evidence row has no fitted ellipse to copy.";
+    renderEllipseEditorControls(selectedBall());
+    return;
+  }
+  state.ellipseEditor.active = true;
+  state.ellipseEditor.draft = normalizeEllipseDraft({
+    center_px: [Number(model.center_px[0]), Number(model.center_px[1])],
+    major_axis_px: Number(model.major_axis_px),
+    minor_axis_px: Number(model.minor_axis_px),
+    angle_deg: Number(model.angle_deg || 0),
+    visible_arcs_deg: model.visible_arcs_deg || [],
+    occluded_arcs_deg: model.occluded_arcs_deg || [],
+    source: "manual_review_ui",
+  });
+  state.ellipseEditor.note = "";
+  state.ellipseEditor.dirty = true;
+  state.ellipseEditor.message = "Unsaved human ellipse.";
+  state.cropBackground = "source";
+  state.referenceOverlays.groundTruthEllipse = true;
+  renderSelected();
+}
+
+function updateEllipseDraftFromFields() {
+  const editor = state.ellipseEditor;
+  if (!editor.draft) return;
+  const values = {};
+  $("ellipseEditorControls").querySelectorAll("[data-ellipse-field]").forEach((input) => {
+    values[input.dataset.ellipseField] = Number(input.value);
+  });
+  editor.draft.center_px = [values.center_x, values.center_y];
+  editor.draft.major_axis_px = values.major_axis_px;
+  editor.draft.minor_axis_px = values.minor_axis_px;
+  editor.draft.angle_deg = values.angle_deg;
+  normalizeEllipseDraft(editor.draft);
+  editor.dirty = true;
+  renderCropOverlay(selectedBall());
+}
+
+function normalizeEllipseDraft(model) {
+  if (!model) return null;
+  model.major_axis_px = Math.max(4, Number(model.major_axis_px || 4));
+  model.minor_axis_px = Math.max(4, Number(model.minor_axis_px || 4));
+  model.angle_deg = ((Number(model.angle_deg || 0) % 180) + 180) % 180;
+  if (model.minor_axis_px > model.major_axis_px) {
+    [model.major_axis_px, model.minor_axis_px] = [model.minor_axis_px, model.major_axis_px];
+    model.angle_deg = (model.angle_deg + 90) % 180;
+  }
+  return model;
+}
+
+function manualEllipseForBall(ballId) {
+  const item = (state.annotation?.balls || []).find((ball) => Number(ball.ball_id) === Number(ballId));
+  return item?.ellipse_px || null;
+}
+
+function activeEllipseForBall(ball) {
+  if (state.ellipseEditor.active && state.selectedId === ball.ball_id && state.ellipseEditor.draft) {
+    return state.ellipseEditor.draft;
+  }
+  return manualEllipseForBall(ball.ball_id);
+}
+
+async function savePerfectEllipse() {
+  const ball = selectedBall();
+  const draft = state.ellipseEditor.draft;
+  if (!ball || !draft || state.ellipseEditor.saving) return;
+  state.ellipseEditor.saving = true;
+  state.ellipseEditor.message = "Saving tracked annotation…";
+  renderEllipseEditorControls(ball);
+  const payload = structuredClone(state.annotation || {
+    schema_version: "snookerhelp.ground_truth.v1",
+    image_name: state.stem,
+    coordinate_system: "source_px",
+    balls: [],
+  });
+  payload.balls = payload.balls || [];
+  const annotationBall = {
+    ball_id: ball.ball_id,
+    label: ball.label,
+    coordinate_system: "source_px",
+    point: draft.center_px.slice(),
+    ellipse_px: { ...draft, center_px: draft.center_px.slice(), source: "manual_review_ui" },
+    notes: state.ellipseEditor.note || undefined,
+  };
+  const index = payload.balls.findIndex((item) => Number(item.ball_id) === Number(ball.ball_id));
+  if (index >= 0) payload.balls[index] = annotationBall;
+  else payload.balls.push(annotationBall);
+  payload.balls.sort((a, b) => Number(a.ball_id ?? 9999) - Number(b.ball_id ?? 9999));
+  try {
+    const response = await fetchJson(`/api/annotations/${encodeURIComponent(state.stem)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.annotation = response.ground_truth;
+    state.annotationStorage = response.storage || state.annotationStorage;
+    state.ellipseEditor.active = false;
+    state.ellipseEditor.draft = null;
+    state.ellipseEditor.dirty = false;
+    state.ellipseEditor.message = "Perfect ellipse saved. Running measured comparison…";
+    state.experiment.result = null;
+    renderSelected();
+    await runEvidenceExperiment();
+  } catch (error) {
+    state.ellipseEditor.message = `Save failed: ${String(error.message || error)}`;
+  } finally {
+    state.ellipseEditor.saving = false;
+    renderSelected();
+  }
+}
+
+async function deletePerfectEllipse() {
+  const ball = selectedBall();
+  if (!ball || !manualEllipseForBall(ball.ball_id)) return;
+  if (!window.confirm(`Delete the saved perfect ellipse for #${ball.ball_id} ${ball.label}?`)) return;
+  const payload = structuredClone(state.annotation);
+  payload.balls = (payload.balls || []).filter((item) => Number(item.ball_id) !== Number(ball.ball_id));
+  const response = await fetchJson(`/api/annotations/${encodeURIComponent(state.stem)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.annotation = response.ground_truth;
+  state.ellipseEditor.message = "Perfect ellipse deleted.";
+  state.experiment.result = null;
+  renderSelected();
+}
+
+function cancelEllipseEditor() {
+  state.ellipseEditor.active = false;
+  state.ellipseEditor.draft = null;
+  state.ellipseEditor.dirty = false;
+  state.ellipseEditor.message = "Manual edit cancelled.";
+  renderSelected();
 }
 
 function renderMapControls(ball) {
@@ -661,6 +1186,7 @@ function renderOverlayMatrix(ball) {
       <label><input type="checkbox" data-reference-overlay="finalCenter" ${state.referenceOverlays.finalCenter ? "checked" : ""}> final source center</label>
       <label><input type="checkbox" data-reference-overlay="roughCenter" ${state.referenceOverlays.roughCenter ? "checked" : ""}> rough detector center</label>
       <label><input type="checkbox" data-reference-overlay="neighborEllipses" ${state.referenceOverlays.neighborEllipses ? "checked" : ""}> neighbor ellipses</label>
+      <label><input type="checkbox" data-reference-overlay="groundTruthEllipse" ${state.referenceOverlays.groundTruthEllipse ? "checked" : ""}> perfect ellipse</label>
     </div>
   `;
   $("layerControls").querySelectorAll("button[data-evidence-row]").forEach((button) => {
@@ -730,6 +1256,13 @@ function overlayMatrixRow(ball, row) {
 }
 
 function selectedMapAsset(ball) {
+  if (state.cropBackground === "experiment" && experimentForBall(ball)) {
+    return {
+      key: "experiment",
+      uri: state.experiment.result.map_png_data_uri,
+      roi_px: state.experiment.result.roi_px,
+    };
+  }
   if (state.cropBackground === "source") return null;
   const assets = ball.evidence?.diagnostics?.evidence_maps?.assets || [];
   return assets.find((asset) => asset.key === state.cropBackground) || null;
@@ -740,6 +1273,19 @@ function cropRasterUri(ball) {
   return asset?.uri || ball.evidence?.crop_uri || "";
 }
 
+function cropRasterGeometry(ball, x0, y0, width, height) {
+  const roi = selectedMapAsset(ball)?.roi_px;
+  if (!Array.isArray(roi) || roi.length < 4) {
+    return { x: 0, y: 0, w: width, h: height };
+  }
+  return {
+    x: Number(roi[0]) - x0,
+    y: Number(roi[1]) - y0,
+    w: Math.max(1, Number(roi[2]) - Number(roi[0])),
+    h: Math.max(1, Number(roi[3]) - Number(roi[1])),
+  };
+}
+
 function evidenceRows(ball) {
   const maps = ball.evidence?.diagnostics?.evidence_maps || {};
   const assets = (maps.assets || []).slice().sort((a, b) => {
@@ -747,7 +1293,7 @@ function evidenceRows(ball) {
     const ib = MAP_ASSET_ORDER.includes(b.key) ? MAP_ASSET_ORDER.indexOf(b.key) : MAP_ASSET_ORDER.length;
     return ia - ib || String(a.key).localeCompare(String(b.key));
   });
-  return [
+  const rows = [
     {
       key: "source",
       label: "Source image",
@@ -763,6 +1309,16 @@ function evidenceRows(ball) {
       hasBackground: true,
     })),
   ];
+  if (experimentForBall(ball)) {
+    rows.push({
+      key: "experiment",
+      label: `Live experiment · ${evidenceMapLabel(state.experiment.result.map_key)}`,
+      short: "transient recomputation",
+      description: "Backend-recomputed evidence map and fit. Production output is unchanged.",
+      hasBackground: true,
+    });
+  }
+  return rows;
 }
 
 function selectedVariantLabel(ball, key) {
@@ -873,6 +1429,15 @@ function overlayColumnAvailable(rowKey, columnKey, variant) {
 }
 
 function evidenceVariant(ball, rowKey) {
+  if (rowKey === "experiment" && experimentForBall(ball)) {
+    return state.experiment.result.experiment || {
+      key: "experiment",
+      points_px: [],
+      rejected_points_px: [],
+      ellipse_fit: null,
+      filter: {},
+    };
+  }
   if (rowKey === "source") {
     return {
       key: "source",
@@ -1136,9 +1701,7 @@ function renderBallStats() {
   }).join("");
   $("ballStatsRows").querySelectorAll("tr[data-ball-id]").forEach((row) => {
     row.addEventListener("click", () => {
-      state.selectedId = Number(row.getAttribute("data-ball-id"));
-      syncUrl();
-      render();
+      changeSelectedBall(Number(row.getAttribute("data-ball-id")));
     });
   });
   renderSelectedSummary();
@@ -1158,6 +1721,9 @@ function renderSelectedSummary() {
   const cluster = clusterInfo(ball);
   const numbering = numberingInfo(ball);
   const mapCount = ball.evidence?.diagnostics?.evidence_maps?.assets?.length || 0;
+  const annotation = experimentForBall(ball)
+    ? state.experiment.result?.experiment?.annotation_comparison
+    : null;
   $("selectedSummary").innerHTML = `
     <div class="summary-title">#${ball.ball_id} ${escapeHtml(ball.label || "unknown")}</div>
     <dl>
@@ -1169,6 +1735,7 @@ function renderSelectedSummary() {
       <dt>Cluster shape</dt><dd>${escapeHtml(clusterShapeText(cluster))}</dd>
       <dt>Raw detector</dt><dd>${escapeHtml(numbering.raw_detector_id == null ? "n/a" : `#${numbering.raw_detector_id}`)}</dd>
       <dt>Source pixel</dt><dd>${ball.source_px ? `${fmt(ball.source_px[0])}, ${fmt(ball.source_px[1])}` : "n/a"}</dd>
+      <dt>Perfect ellipse</dt><dd>${manualEllipseForBall(ball.ball_id) ? (annotation?.status === "computed" ? `${fmt(annotation.annotation_score)}% annotation agreement` : "saved; run experiment for measured agreement") : "not annotated"}</dd>
     </dl>
   `;
 }
@@ -1177,6 +1744,9 @@ function confidenceRows(ball) {
   const confidence = ball.confidence || {};
   const finalPolicy = ball.evidence?.diagnostics?.final_image_evidence || {};
   const cluster = clusterInfo(ball);
+  const annotation = experimentForBall(ball)
+    ? state.experiment.result?.experiment?.annotation_comparison
+    : null;
   return [
     ["Score", confidence.score == null ? "n/a" : `${Math.round(confidence.score * 100)}%`],
     ["Level", displayLabel(confidence.level || "unknown")],
@@ -1186,7 +1756,9 @@ function confidenceRows(ball) {
     ["Cluster shell", clusterShellText(cluster)],
     ["Cluster traversal", clusterTraversalText(cluster)],
     ["Cluster shape", clusterShapeText(cluster)],
-    ["Ground truth", "none in this score; it is image/physics/scene agreement, not measured accuracy"],
+    ["Ground truth", manualEllipseForBall(ball.ball_id)
+      ? (annotation?.status === "computed" ? `perfect ellipse comparison ${fmt(annotation.annotation_score)}%; ${fmt(annotation.contour_rms_error_px)} px contour RMS` : "perfect ellipse saved; recompute experiment to measure")
+      : "none in this score; it is image/physics/scene agreement, not measured accuracy"],
     ["Score rule", "start with legacy detector score, then use the best physical/image agreement score only when the sphere residual is not low"],
     ["Final source center", finalCenterPolicyText(finalPolicy)],
     ["Reasons", (confidence.reasons || []).map(displayLabel).join(", ") || "none"],
@@ -1200,9 +1772,45 @@ function selectByOffset(offset) {
   if (!list.length) return;
   const index = list.findIndex((ball) => ball.ball_id === state.selectedId);
   const next = list[(index + offset + list.length) % list.length];
-  state.selectedId = next.ball_id;
+  changeSelectedBall(next.ball_id);
+}
+
+function changeSelectedBall(ballId) {
+  if (Number(ballId) === Number(state.selectedId)) return;
+  if (state.ellipseEditor.active && state.ellipseEditor.dirty) {
+    const proceed = window.confirm("Discard the unsaved perfect ellipse and select another ball?");
+    if (!proceed) return;
+  }
+  state.selectedId = Number(ballId);
+  resetSelectedTools();
   syncUrl();
   render();
+}
+
+function resetSelectedTools() {
+  clearTimeout(state.experiment.timer);
+  state.ellipseEditor = {
+    active: false,
+    draft: null,
+    dirty: false,
+    saving: false,
+    message: "",
+    dragMode: null,
+    pointerId: null,
+    note: "",
+  };
+  state.experiment = {
+    ballId: state.selectedId,
+    running: false,
+    error: "",
+    result: null,
+    requestId: Number(state.experiment?.requestId || 0) + 1,
+    timer: null,
+    parameters: null,
+  };
+  state.overlaySelections = null;
+  state.primaryEvidenceKey = "source";
+  state.cropBackground = "source";
 }
 
 function syncUrl() {
@@ -1273,7 +1881,9 @@ async function fetchJson(url, options) {
 }
 
 function assetUrl(path) {
-  return path ? `${state.assetsBase}${path}` : "";
+  if (!path) return "";
+  if (String(path).startsWith("data:") || String(path).startsWith("/")) return String(path);
+  return `${state.assetsBase}${path}`;
 }
 
 function drawCross(svg, x, y, className, size = 22) {
@@ -1479,6 +2089,30 @@ function escapeDisplay(value) {
 
 function fmt(value) {
   return Number(value).toFixed(1);
+}
+
+function signedFmt(value) {
+  const number = Number(value);
+  return `${number >= 0 ? "+" : ""}${number.toFixed(1)}`;
+}
+
+function formatParameterValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value ?? "");
+  if (Number.isInteger(number)) return String(number);
+  return number.toFixed(number < 0.1 ? 3 : 2);
+}
+
+function evidenceMapLabel(key) {
+  const labels = {
+    gray_edge: "Grayscale edge",
+    lab_delta_e: "Lab Delta-E",
+    chroma_difference: "Chroma difference",
+    ball_vs_cloth_probability: "Ball-vs-cloth probability",
+    physical_projection_band: "Physical projection band",
+    combined_boundary_score: "Combined boundary score",
+  };
+  return labels[key] || displayLabel(key);
 }
 
 function clamp(value, min, max) {

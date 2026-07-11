@@ -3,8 +3,9 @@
 This document describes the current v1 boundary-evidence pipeline used by the
 review UI and by physical-model scoring.
 
-Current status: v1.5.5 plus generic cluster graph / boundary-ownership
-diagnostics and full-table global evidence-map normalization.
+Current status: v1.6.0 plus generic cluster graph / boundary-ownership
+diagnostics, full-table global evidence-map normalization, live backend
+experiments, and tracked perfect-ellipse ground truth.
 
 ## Short version
 
@@ -30,6 +31,11 @@ source crop
 
 The cyan recovered-points experiment is removed from the active pipeline.
 
+The cyan solid ellipse in v1.6.0 has a different meaning: it is a human
+perfect-ellipse annotation stored under `benchmarks/annotations/`. It is never
+fed into production recognition. It provides an independent target for testing
+map and filtering parameters.
+
 The physical projection band still exists, but only as a diagnostic map and a
 weak score term. It no longer creates extra cyan boundary points and it no
 longer adds points to the cream ellipse fit.
@@ -51,6 +57,13 @@ cases.
 DSC00542 shows the next limitation clearly: the free-ball policy is useful for
 loose balls, but it is not sufficient for dense clusters where the crop contains
 other balls, shadows, and very little real cloth.
+
+The first measured intact-rack baseline is `DSC00540`. With 22 manually fitted
+ellipses and a default 3 px annotation tolerance, most fits are already close,
+but interior reds #12, #14, #17, #19, and #21 have roughly 25-29 px contour RMS
+and 32-36 px center error. This isolates the primary remaining failure as
+cluster boundary ownership/joint fitting rather than global cloth estimation.
+See `benchmarks/results/DSC00540/ellipse_benchmark.json`.
 
 v1.3.8 changes the color reference used by `Lab Delta-E`,
 `chroma_difference`, and `ball_vs_cloth_probability`:
