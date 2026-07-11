@@ -56,6 +56,11 @@ def test_radial_boundary_filter_removes_local_radius_spikes() -> None:
     stats = result["stats"]
     assert stats["status"] == "filtered"
     assert stats["rejected_count"] >= 2
+    assert stats["rejected_reason_counts"]["local_radius_spike"] >= 2
+    assert any(
+        record["primary_reason"] == "local_radius_spike"
+        for record in stats["rejected_point_reasons"]
+    )
     assert len(result["accepted_points"]) >= 42
 
     unfiltered = fit_ellipse_payload(points)

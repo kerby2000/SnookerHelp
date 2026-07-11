@@ -41,6 +41,32 @@ The warped view remains useful for background subtraction, table masking,
 coarse location, and debug display. It is not used as the final place to judge
 whether a ball is round.
 
+## Ball numbering
+
+v1.4.1 introduces stable display/review IDs. These IDs are not raw detector
+creation order.
+
+```text
+#1   white
+#2   yellow
+#3   green
+#4   brown
+#5   blue
+#6   pink
+#7   black
+#8-22 reds, sorted by table position from top-to-bottom, then left-to-right
+```
+
+The detector's original ID is retained as `raw_detector_id` in diagnostics.
+The v1 review UI shows canonical IDs by default and exposes the raw detector ID
+only as debugging evidence. Existing `review.json` / old `review_v1.json`
+feedback without the v1 numbering marker is remapped from raw IDs to canonical
+IDs when loaded.
+
+This makes review notes portable across images: fixed-colour balls keep the
+same number, and reds have deterministic table-order numbers even though
+individual red balls are not physically tracked across different photos.
+
 ## Why warped ball shapes are misleading
 
 The four-corner table homography is a cloth-plane transform. It is valid for
@@ -91,7 +117,7 @@ See [boundary_filtering_strategy.md](boundary_filtering_strategy.md) for the
 current filter details, evidence maps, benchmark numbers, and the planned
 green/blue strategy.
 
-### Local evidence maps
+### Evidence maps
 
 v1.3 adds evidence maps for every ball crop:
 
@@ -105,7 +131,7 @@ For green/blue balls, the map weights Lab/chroma and ball-vs-cloth probability
 more heavily than raw grayscale edge strength. This is the first step toward
 recovering weak boundaries that ordinary edge detection misses.
 
-The v1 review UI shows these maps as selectable crop backgrounds, so failures
+The v1 review UI shows these maps as selectable evidence backgrounds, so failures
 can be inspected visually instead of only through summary numbers.
 
 Since v1.3.8, the active cloth reference for the color maps is global by
@@ -115,8 +141,15 @@ pixels. The older local annulus around each ball is still computed and shown as
 a diagnostic because it exposes exactly when a cluster crop is contaminated by
 neighboring balls or shadows.
 
+Since v1.5.5, the global-cloth Lab Delta-E, chroma, and grayscale edge maps are
+computed over the full source image first and only then cropped into the
+selected ball ROI. This keeps the evidence-map background scale stable from
+ball to ball. The ball-vs-cloth probability map still uses the selected ball's
+interior colour, so it can legitimately differ between ball classes, but it no
+longer uses per-ROI Lab/chroma normalization as its supporting scale.
+
 v1.3.4 also samples boundary points from each map separately. In the UI, the
-crop background selector now controls:
+evidence-background selector now controls:
 
 1. the displayed diagnostic map;
 2. the accepted/rejected boundary points;
@@ -147,12 +180,58 @@ nearby ball ellipses are drawn as purple dashed reference outlines, and sampled
 boundary points that fall inside those neighbor ellipses can be rejected before
 the selected ball's cream ellipse is fitted.
 
+v1.4 adds a generic large-cluster shell diagnostic. This is not specific to the
+opening rack triangle. Any sufficiently large adjacent-ball component is
+classified into shells:
+
+```text
+shell 1: perimeter balls with at least one outer/cloth-facing side
+shell 2+: interior balls, where much less real cloth boundary is visible
+```
+
+For a 15-red starting triangle the expected first diagnostic split is:
+
+```text
+1
+1 1
+1 2 1
+1 2 2 1
+1 1 1 1 1
+```
+
+The implementation uses the cluster's table-coordinate anchors and repeated
+convex-hull-distance peeling. It marks balls close to the current outer hull
+as the current shell, removes them, and repeats on the remaining balls. The
+v1 UI labels this as `P1` for perimeter shell 1 and `I2` for interior shell 2.
+
+This is currently diagnostic only. It helps explain why interior balls in a
+large cluster have unreliable image evidence, but it does not yet override the
+final source center or table position.
+
+v1.4.2 adds traversal diagnostics for those large clusters. The UI can show:
+
+```text
+P1 / I2   perimeter/interior shell
+T01...    proposed outside-in traversal rank
+```
+
+Two diagnostic paths are emitted:
+
+- outside-in clockwise;
+- outside-in counter-clockwise.
+
+The displayed `Txx` label is currently the clockwise outside-in rank. These
+paths are not yet used to decide the final fit. They are there so DSC00540 and
+future rack/cluster images can be inspected before a perimeter-first solver is
+allowed to alter centers.
+
 This is still not a full rack/cluster solver. The remaining problem is deciding
 which visible edge belongs to which ball when several balls touch. The correct
 next improvement is not simply to choose the highest map score; it is to extend
 cluster-aware evidence ownership:
 
 - neighbor exclusion zones and neighbor-owned point rejection;
+- perimeter-first / outside-in reasoning for large clusters;
 - connected visible-arc scoring;
 - local color-model health checks;
 - explicit low-confidence output when the evidence belongs to multiple balls.

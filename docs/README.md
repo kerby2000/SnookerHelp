@@ -2,8 +2,13 @@
 
 Start with:
 
+0. [v2_requirements/README.md](v2_requirements/README.md)  
+   Canonical split requirements for the fresh recognition v2 attempt. Use this
+   before implementing new recognition logic. The older monolithic
+   `recognition_v2_requirements.md` is now source/archive material.
+
 1. [ball_geometry_model.md](ball_geometry_model.md)  
-   Main document for current ball fitting, image evidence, physical model,
+   Current prototype document for ball fitting, image evidence, physical model,
    final estimate, confidence, and why circle/ellipse/sphere evidence can
    disagree.
 
@@ -11,12 +16,13 @@ Start with:
    How to generate reports and use the interactive review UI.
 
 3. [boundary_filtering_strategy.md](boundary_filtering_strategy.md)  
-   Current v1.3.9 accepted/rejected edge-point filtering, per-map boundary
+   Current v1.4.6 accepted/rejected edge-point filtering, per-map boundary
    variants, promoted final-position evidence-map policy, global cloth
    reference, neighbor-ellipse cluster ownership filtering, diagnostic
    evidence maps, physical optimization, adjacent-ball scene constraints,
-   benchmark gates, and the plan for low-contrast
-   blue/green balls on green cloth.
+   generic large-cluster perimeter/interior shell diagnostics, same-color
+   cluster shape-prior diagnostics, benchmark gates, stable canonical review
+   numbering, and the plan for low-contrast blue/green balls on green cloth.
 
 4. [approximate_camera_model.md](approximate_camera_model.md)  
    Current temporary camera model used before ChArUco calibration.
@@ -55,6 +61,10 @@ cloth reference:          global table-cloth Lab by default; local annulus retai
 map variants:             selected map can drive its own visible dots and cream ellipse for review
 final map policy:          ball-vs-cloth default; chroma for green/blue/brown; other maps diagnostic
 cluster filtering:         neighbor-owned boundary points rejected when they fall inside nearby ball ellipses
+cluster shells:            large adjacent clusters show perimeter/interior shell diagnostics
+cluster traversal:         large adjacent clusters show outside-in CW/CCW diagnostic traversal ranks
+review viewport:           full-table source panel supports wheel zoom, drag pan, reset, and Fit selected
+review numbering:          #1 white, #2 yellow, #3 green, #4 brown, #5 blue, #6 pink, #7 black, #8-22 table-ordered reds
 physics evidence:         approximate or calibrated projected sphere model, forward or optimized
 scene constraints:        adjacent-ball equal-radius/non-overlap/contact diagnostics
 final estimate:           source pixel + camera/table projection + confidence

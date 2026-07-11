@@ -100,6 +100,18 @@ Current baseline on the supplied 21 images:
 
 See `docs/baseline_validation.md` for the scenario breakdown.
 
+## Ball numbering in v1 review
+
+The v1 review UI uses stable canonical display IDs, not raw detector creation
+order:
+
+```text
+#1 white, #2 yellow, #3 green, #4 brown, #5 blue, #6 pink, #7 black
+#8-22 reds, sorted by table position from top-to-bottom then left-to-right
+```
+
+The raw detector ID is still stored in diagnostics as `raw_detector_id`.
+
 ## Coordinate accuracy
 
 Create manual ball-center ground truth:

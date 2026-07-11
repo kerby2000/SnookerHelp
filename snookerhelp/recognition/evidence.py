@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from snookerhelp.core.ball_numbering import (
+    CANONICAL_BALL_NUMBERING_SCHEME,
+    canonical_ball_id_map,
+)
 from snookerhelp.core.schema import (
     BallEstimate,
     BallEvidence,
@@ -35,11 +39,23 @@ def table_state_from_legacy_report(
         for ball in review_evidence.get("balls", [])
         if "id" in ball
     }
+    numbering_by_raw_id = canonical_ball_id_map(list(state.get("balls", [])))
     balls: list[BallEstimate] = []
     for state_ball in state.get("balls", []):
-        ball_id = int(state_ball["id"])
-        evidence_ball = evidence_by_id.get(ball_id, {})
-        balls.append(_ball_estimate_from_legacy(state_ball, evidence_ball))
+        raw_detector_id = int(state_ball["id"])
+        evidence_ball = evidence_by_id.get(raw_detector_id, {})
+        numbering = numbering_by_raw_id.get(raw_detector_id, {})
+        balls.append(
+            _ball_estimate_from_legacy(
+                state_ball,
+                evidence_ball,
+                canonical_ball_id=int(
+                    numbering.get("canonical_ball_id", raw_detector_id)
+                ),
+                numbering=numbering,
+            )
+        )
+    balls.sort(key=lambda ball: ball.ball_id)
 
     return TableState(
         schema_version=V1_TABLE_STATE_SCHEMA,
@@ -56,6 +72,11 @@ def table_state_from_legacy_report(
             "legacy_report_schema": report.get("schema_version"),
             "legacy_output_directory": report.get("output_directory"),
             "legacy_panel_count": len(report.get("panels") or []),
+            "ball_numbering_scheme": CANONICAL_BALL_NUMBERING_SCHEME,
+            "raw_to_canonical_ball_ids": {
+                str(raw_id): metadata.get("canonical_ball_id")
+                for raw_id, metadata in sorted(numbering_by_raw_id.items())
+            },
         },
     )
 
@@ -63,15 +84,19 @@ def table_state_from_legacy_report(
 def _ball_estimate_from_legacy(
     state_ball: dict[str, Any],
     evidence_ball: dict[str, Any],
+    *,
+    canonical_ball_id: int | None = None,
+    numbering: dict[str, Any] | None = None,
 ) -> BallEstimate:
-    ball_id = int(state_ball["id"])
+    raw_detector_id = int(state_ball["id"])
+    ball_id = int(canonical_ball_id or raw_detector_id)
     label = str(
         evidence_ball.get("label")
         or state_ball.get("color_label")
         or state_ball.get("class")
         or "unknown"
     )
-    evidence = _ball_evidence_from_legacy(ball_id, label, state_ball, evidence_ball)
+    evidence = _ball_evidence_from_legacy(ball_id, label, state_ball, evidence_ball, numbering or {})
     confidence = _confidence_from_legacy(evidence_ball)
     source_px = (
         evidence_ball.get("source_center_px")
@@ -105,6 +130,7 @@ def _ball_evidence_from_legacy(
     label: str,
     state_ball: dict[str, Any],
     evidence_ball: dict[str, Any],
+    numbering: dict[str, Any] | None = None,
 ) -> BallEvidence:
     image_model = _image_model_from_legacy(evidence_ball)
     physical_model = _physical_model_from_legacy(evidence_ball)
@@ -154,11 +180,18 @@ def _ball_evidence_from_legacy(
             or {},
             "source_boundary_view_score": evidence_ball.get("boundary_view_score")
             or {},
+            "rejection_addback_scenarios": evidence_ball.get(
+                "rejection_addback_scenarios",
+                [],
+            ),
+            "consensus_reject_refit": evidence_ball.get("consensus_reject_refit"),
+            "arc_combination_refit": evidence_ball.get("arc_combination_refit"),
             "scene_constraints": {
                 "joint_cluster": evidence_ball.get("joint_cluster_optimization")
                 or state_ball.get("source_joint_cluster_optimization")
                 or {},
             },
+            "ball_numbering": numbering or {},
         },
     )
 
@@ -270,6 +303,14 @@ def _scene_constraint_confidence(warnings: list[Any]) -> float:
         score -= 0.07
     if "fallback_suspicious" in warning_set or "no_points" in warning_set:
         score -= 0.25
+    if "cluster_shape_outlier" in warning_set:
+        score -= 0.18
+    if "cluster_ellipse_size_outlier" in warning_set:
+        score -= 0.08
+    if "cluster_ellipse_angle_outlier" in warning_set:
+        score -= 0.08
+    if "neighbor_ellipse_ownership_conflict" in warning_set:
+        score -= 0.05
     return round(max(0.05, score), 4)
 
 

@@ -719,6 +719,7 @@ def _filter_radial_boundary_points(
             rejected=np.empty((0, 2), dtype=np.float64),
             status="disabled",
             raw_count=raw_count,
+            raw_points=points,
             reasons=["disabled_or_insufficient_points"],
         )
 
@@ -804,16 +805,28 @@ def _filter_radial_boundary_points(
             rejected=np.empty((0, 2), dtype=np.float64),
             status="fallback_unfiltered",
             raw_count=raw_count,
+            raw_points=points,
             reasons=["filter_would_drop_too_many_points"],
         )
 
     rejected = points[~inlier_mask].astype(np.float64)
     accepted = points[inlier_mask].astype(np.float64)
+    rejected_point_reasons, rejected_reason_counts = _rejected_point_reason_payload(
+        points=points,
+        rejected_mask=~inlier_mask,
+        reason_masks={
+            "angular_segment_endpoint": endpoint_outliers,
+            "local_radius_spike": smooth_outliers,
+            "neighbor_ellipse_overlap": neighbor_outliers_applied,
+            "ellipse_residual_outlier": ellipse_outliers,
+        },
+    )
     return _boundary_filter_payload(
         points=accepted,
         rejected=rejected,
         status="filtered" if len(rejected) else "no_outliers",
         raw_count=raw_count,
+        raw_points=points,
         reasons=reasons or ["no_outliers"],
         extra={
             "local_radius_rejected_count": int(np.count_nonzero(smooth_outliers)),
@@ -821,9 +834,55 @@ def _filter_radial_boundary_points(
             "segment_endpoint_rejected_count": int(np.count_nonzero(endpoint_outliers)),
             "neighbor_ellipse_rejected_count": int(np.count_nonzero(neighbor_outliers_applied)),
             "neighbor_ellipse_candidate_count": int(np.count_nonzero(neighbor_outliers)),
+            "rejected_point_reasons": rejected_point_reasons,
+            "rejected_reason_counts": rejected_reason_counts,
             "minimum_points": int(minimum_points),
         },
     )
+
+
+def _rejected_point_reason_payload(
+    *,
+    points: np.ndarray,
+    rejected_mask: np.ndarray,
+    reason_masks: dict[str, np.ndarray],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Return per-rejected-point reason metadata for review diagnostics."""
+
+    priority = [
+        "neighbor_ellipse_overlap",
+        "ellipse_residual_outlier",
+        "local_radius_spike",
+        "angular_segment_endpoint",
+        "other_rejected",
+    ]
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    rejected_mask = np.asarray(rejected_mask, dtype=bool).reshape(-1)
+    reason_payload: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for index, point in enumerate(points):
+        if index >= len(rejected_mask) or not bool(rejected_mask[index]):
+            continue
+        reasons: list[str] = []
+        for reason, mask in reason_masks.items():
+            mask_array = np.asarray(mask, dtype=bool).reshape(-1)
+            if index < len(mask_array) and bool(mask_array[index]):
+                reasons.append(reason)
+        if not reasons:
+            reasons = ["other_rejected"]
+        primary_reason = next(
+            (reason for reason in priority if reason in reasons),
+            reasons[0],
+        )
+        counts[primary_reason] = counts.get(primary_reason, 0) + 1
+        reason_payload.append(
+            {
+                "point_px": [float(point[0]), float(point[1])],
+                "primary_reason": primary_reason,
+                "reasons": reasons,
+            }
+        )
+    return reason_payload, counts
 
 
 def _boundary_filter_payload(
@@ -833,8 +892,13 @@ def _boundary_filter_payload(
     status: str,
     raw_count: int,
     reasons: list[str],
+    raw_points: np.ndarray | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    raw_points_array = np.asarray(
+        points if raw_points is None else raw_points,
+        dtype=np.float64,
+    ).reshape(-1, 2)
     return {
         "accepted_points": np.asarray(points, dtype=np.float64).reshape(-1, 2),
         "rejected_points": np.asarray(rejected, dtype=np.float64).reshape(-1, 2),
@@ -842,6 +906,10 @@ def _boundary_filter_payload(
             "status": status,
             "method": "radial_radius_hampel_plus_ellipse_residual",
             "raw_count": int(raw_count),
+            "raw_points_px": [
+                [round(float(point[0]), 4), round(float(point[1]), 4)]
+                for point in raw_points_array
+            ],
             "accepted_count": int(len(points)),
             "rejected_count": int(len(rejected)),
             "reasons": list(reasons),

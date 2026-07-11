@@ -11,9 +11,12 @@ import webbrowser
 
 from snookerhelp.recognition import table_state_from_legacy_report
 from snookerhelp.review.schema import (
+    CANONICAL_BALL_NUMBERING_SCHEME,
+    V1_REVIEW_SCHEMA,
     default_review_feedback,
     review_feedback_from_dict,
 )
+from snookerhelp.core.schema import ReviewBallFeedback, ReviewFeedback
 
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
@@ -182,18 +185,55 @@ def _load_review_payload(reports_root: Path, stem: str) -> dict[str, Any]:
     if not report_path.is_file():
         raise FileNotFoundError(f"Missing report: {report_path}")
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    ball_ids = [int(ball["id"]) for ball in (report.get("state") or {}).get("balls", [])]
+    table_state = table_state_from_legacy_report(report, report_stem=stem)
+    ball_ids = [int(ball.ball_id) for ball in table_state.balls]
+    raw_to_canonical = {
+        int(raw_id): int(canonical_id)
+        for raw_id, canonical_id in (
+            table_state.diagnostics.get("raw_to_canonical_ball_ids") or {}
+        ).items()
+    }
     review_v1_path = report_dir / "review_v1.json"
     review_legacy_path = report_dir / "review.json"
     if review_v1_path.is_file():
         payload = json.loads(review_v1_path.read_text(encoding="utf-8"))
         review = review_feedback_from_dict(payload, image_name=stem)
+        if payload.get("numbering_scheme") != CANONICAL_BALL_NUMBERING_SCHEME:
+            review = _remap_review_feedback_ids(review, raw_to_canonical)
     elif review_legacy_path.is_file():
         payload = json.loads(review_legacy_path.read_text(encoding="utf-8"))
         review = review_feedback_from_dict(payload, image_name=stem)
+        review = _remap_review_feedback_ids(review, raw_to_canonical)
     else:
         review = default_review_feedback(image_name=stem, ball_ids=ball_ids)
     return {"review_feedback": review.to_dict()}
+
+
+def _remap_review_feedback_ids(
+    review: ReviewFeedback,
+    raw_to_canonical: dict[int, int],
+) -> ReviewFeedback:
+    remapped_balls = []
+    for item in review.balls:
+        canonical_id = raw_to_canonical.get(int(item.ball_id), int(item.ball_id))
+        remapped_balls.append(
+            ReviewBallFeedback(
+                ball_id=canonical_id,
+                decision=item.decision,
+                issue_tags=list(item.issue_tags),
+                confidence=item.confidence,
+                comment=item.comment,
+                manual_correction=item.manual_correction,
+            )
+        )
+    return ReviewFeedback(
+        schema_version=V1_REVIEW_SCHEMA,
+        image_name=review.image_name,
+        numbering_scheme=CANONICAL_BALL_NUMBERING_SCHEME,
+        balls=remapped_balls,
+        missing_balls=list(review.missing_balls),
+        audit_trail=list(review.audit_trail),
+    )
 
 
 def _safe_report_dir(reports_root: Path, stem: str) -> Path:

@@ -25,7 +25,17 @@
     <section class="panel pixels-panel">
       <div class="panel-header">
         <h2>Pixels</h2>
-        <span id="imageSummary" class="muted"></span>
+        <div class="source-header-tools">
+          <span id="imageSummary" class="muted"></span>
+          <div class="source-zoom-controls" aria-label="full-table pan and zoom controls">
+            <span id="sourceZoomLabel" class="zoom-label">100%</span>
+            <button id="sourceZoomOut" class="small-button" type="button" title="Zoom out">−</button>
+            <button id="sourceZoomIn" class="small-button" type="button" title="Zoom in">+</button>
+            <button id="sourceFitSelected" class="small-button" type="button" title="Center and zoom the selected ball">Fit selected</button>
+            <button id="sourcePrintClusterOrder" class="small-button" type="button" title="Print cluster traversal paths to browser console">Print order</button>
+            <button id="sourceResetView" class="small-button" type="button" title="Reset full-table view">Reset</button>
+          </div>
+        </div>
       </div>
       <div class="image-stage" id="sourceStage">
         <img id="sourceImage" alt="source image">
@@ -108,14 +118,17 @@
     <div class="legend-body">
       <p><strong>Background button</strong>: changes only the crop image behind the overlays.</p>
       <p><strong>White dots</strong>: accepted boundary pixels sampled from that row's evidence view.</p>
-      <p><strong>Red dots</strong>: rejected outlier boundary pixels. They are visible for review but excluded from that row's ellipse fit.</p>
-      <p><strong>Dashed outline</strong>: cream = observed ellipse fitted from accepted image points; blue = predicted physical sphere outline.</p>
-      <p><strong>Neighbor ellipses</strong>: purple dashed outlines show nearby detected balls. Boundary dots inside these neighbor ellipses can be rejected as neighbor-owned evidence before fitting the selected ball's cream ellipse.</p>
+      <p><strong>Rejected dots</strong>: rejected outlier boundary pixels. They are always red in the crop and are excluded from that row's ellipse fit. Rejection reasons remain available in the Image evidence text panel.</p>
+      <p><strong>Dashed outline</strong>: observed ellipse fitted from the accepted white boundary pixels for the selected evidence row.</p>
+      <p><strong>Cluster-combination promotion</strong>: for cluster shape outliers, the estimator can try combinations of raw boundary arcs and promote the best cluster-consistent ellipse into the final source center. Promoted results appear as the normal white/red points and dashed outline, not as a separate diagnostic color.</p>
+      <p><strong>Neighbor geometry</strong>: the optional purple dashed neighbor ellipses show nearby balls used by the ownership/rejection checks. They are reference geometry only; they do not replace the selected ball's cream observed ellipse.</p>
+      <p><strong>Cluster labels</strong>: `P1` / `I2` show perimeter/interior shell. `Txx` is a diagnostic outside-in perimeter-walk rank. Use the source-panel Print order button for the full path if labels overlap.</p>
       <p><strong>Center cross</strong>: center of the row's observed ellipse or physical projection. The final source-pixel center remains a separate green reference cross.</p>
       <p><strong>Evidence-view score</strong>: diagnostic score for comparing rows. It combines physical-outline residual, accepted point count, inlier ratio, and whether an ellipse was fitted. It is not ground truth.</p>
+      <p><strong>Add-back diagnostics</strong>: text-only diagnostics that show whether selected rejected-point categories or raw arc combinations improved the fit. Only strict cluster-combination promotions change the exported center.</p>
       <p><strong>B/C/L color reference</strong>: ball-vs-cloth probability, chroma difference, and Lab Delta-E use the active cloth reference shown in Image evidence. In v1.3.9 this is global table cloth when available; the old local annulus remains visible as a diagnostic because it can be contaminated by neighboring balls in clusters.</p>
       <p><strong>Final source center</strong>: the exported source pixel comes from the configured final map policy: ball-vs-cloth probability by default, chroma difference for green/blue/brown, with fallback to the older source center if that map fails.</p>
-      <p><strong>Confidence score</strong>: no manual annotation or physical ground truth is used here. The displayed score starts from the detector/review baseline, then can rise only when image evidence and the blue physical sphere projection agree. If the physical residual is low quality, it cannot raise confidence.</p>
+      <p><strong>Confidence score</strong>: no manual annotation or physical ground truth is used here. The displayed score starts from the detector/review baseline, then can rise only when image evidence and the internal physical sphere projection agree. If the physical residual is low quality, it cannot raise confidence.</p>
       <p><strong>Layer row button</strong>: clears the overlay matrix, switches the background if the row has one, and enables that row's dots/outline/center.</p>
     </div>
   </aside>

@@ -3,7 +3,8 @@
 This document describes the current v1 boundary-evidence pipeline used by the
 review UI and by physical-model scoring.
 
-Current status: v1.3.8 plus DSC00542 cluster-review notes.
+Current status: v1.5.5 plus generic cluster graph / boundary-ownership
+diagnostics and full-table global evidence-map normalization.
 
 ## Short version
 
@@ -17,7 +18,11 @@ source crop
   -> cream observed ellipse fitted from accepted white points only
   -> optional evidence-map-specific boundary variants for review
   -> active cloth reference for color maps, global by default
+  -> full-table global Lab/chroma/edge maps cropped back to each ROI
   -> blue projected sphere outline from the camera/table/ball model
+  -> large adjacent-cluster shell diagnostics
+  -> generic cluster graph + boundary ownership diagnostics
+  -> gated arc-combination promotion for dense-cluster outliers
   -> diagnostic evidence maps written for review
   -> configured final-position evidence-map policy
   -> physical optimizer scores projected outlines against accepted image evidence
@@ -78,12 +83,13 @@ For one selected ball:
   white dots;
 - blue dashed line = projected sphere outline from camera/table/ball geometry;
 - green cross = final source-pixel estimate used for table XY;
-- diagnostic crop backgrounds = evidence maps that explain where the algorithm
+- evidence-map backgrounds = maps that explain where the algorithm
   sees edges/color contrast/projection-band support.
 
-When the crop background is `Source image`, the white/red points are the
-default source-boundary sampler. When the crop background is an evidence map,
-the white/red points and cream ellipse are recomputed from that selected map.
+When the evidence background is `Source image`, the white/red points are the
+default source-boundary sampler. When the evidence background is an evidence
+map, the white/red points and cream ellipse are recomputed from that selected
+map.
 
 Do not interpret the blue dashed line as calibrated truth yet. With the current
 approximate camera model it is a physics-based prior, not a final authority.
@@ -96,16 +102,26 @@ approximate camera model it is a physics-based prior, not a final authority.
   - observed edge ellipse fitting.
 - `snookerhelp/recognition/evidence_maps.py`
   - grayscale/color/probability/projection-band maps;
+  - full-table global map normalization;
   - global and local cloth-reference diagnostics.
 - `snookerhelp/recognition/physical_optimize.py`
   - local physical X/Y search and scoring against source evidence.
 - `snookerhelp/recognition/cluster_optimize.py`
   - adjacent-ball diagnostics for close/rack balls.
+- `snookerhelp/recognition/cluster_graph.py`
+  - generic node/edge graph for arbitrary touching or near-touching clusters;
+  - duplicate/overlap/touching/near-touching relationship diagnostics.
+- `snookerhelp/recognition/boundary_ownership.py`
+  - classifies current boundary samples as target-owned, contact seam,
+    neighbor-owned, weak target boundary, or unowned outlier.
+- `snookerhelp/recognition/cluster_optimizer.py`
+  - combines the legacy adjacent-cluster optimizer, the generic graph, and
+    ownership diagnostics into the scene-constraint payload.
 - `snookerhelp/review/evidence_builder.py`
   - writes crop-aligned diagnostic evidence-map PNGs into report folders;
   - writes map-specific boundary-point and ellipse variants for the v1 UI.
 - `snookerhelp/review/static/`
-  - v1 browser UI; lets the user switch crop background to each evidence map,
+  - v1 browser UI; lets the user switch evidence background to each evidence map,
     and switches the white/red points plus cream ellipse with it.
 
 ## Active filtering stages
@@ -174,8 +190,8 @@ The current rule is intentionally simple and auditable:
    neighbor ellipse scaled slightly inward;
 3. reject those points only if enough selected-ball points remain;
 4. keep the rejected points visible as red dots;
-5. draw the nearby neighbor ellipses as purple dashed reference outlines in the
-   v1 review UI.
+5. keep ownership categories in diagnostics; the default UI still uses only
+   white accepted dots and red rejected dots.
 
 Relevant config:
 
@@ -198,13 +214,217 @@ The report exports:
 - `neighbor_ellipse_rejected_count`: neighbor-owned points actually removed
   before fitting.
 
+v1 also exports a higher-level ownership payload under each ball's
+`source_joint_cluster_optimization.boundary_ownership`. This does not introduce
+new UI colors. It is used to explain and score whether a candidate fit is
+mostly supported by the selected ball, by a contact seam, or by a neighboring
+ball.
+
+### 4b. Arc-combination promotion
+
+For dense clusters, the first filter can reject useful arcs because they are
+near neighboring ellipses. The current promoted path is:
+
+1. start from all raw radial boundary samples;
+2. split them into angular/spatial arc groups;
+3. fit every useful non-empty group combination, capped when there are too many
+   groups;
+4. compare each candidate ellipse to the same-color cluster consensus size and
+   angle;
+5. score residual, point coverage, multi-arc support, and boundary ownership;
+6. promote only when the best candidate is not a cluster-shape outlier and
+   passes conservative residual/coverage gates.
+
+This is the first implementation of the "try combinations, then promote only if
+physics/cluster consistency improves" strategy. It is intentionally not a
+triangle-only solver.
+
+### 5. Large-cluster shell diagnostics
+
+v1.4 adds a generic shell classifier for any large adjacent-ball component.
+This is a scene-level diagnostic, not a rack-only special case.
+
+The current method:
+
+1. build adjacent-ball components from table-coordinate anchors;
+2. for components with at least `shell_classification_min_size` balls, compute
+   a convex hull;
+3. mark balls near the current hull as the current shell;
+4. remove that shell and repeat on the remaining balls;
+5. expose `perimeter shell 1` / `interior shell 2+` in the report and v1 UI.
+
+Relevant config:
+
+```yaml
+cluster_optimization:
+  shell_classification_enabled: true
+  shell_classification_min_size: 5
+  shell_perimeter_distance_factor: 0.42
+```
+
+On `DSC00540`, this produces one 15-red cluster with 12 perimeter balls and
+3 interior balls. That is the expected first split for the starting triangle:
+outside balls have at least one cloth-facing side, while inside balls have
+little or no cloth boundary to sample.
+
+The output fields are diagnostic:
+
+- `cluster_shell_status`;
+- `cluster_shell`;
+- `cluster_role`;
+- `cluster_perimeter_distance_mm`;
+- `cluster_neighbor_degree`.
+
+Current limitation: shell role is not yet used to change final fitting. The
+next step is to let perimeter balls provide stronger neighbor/ownership
+constraints before attempting interior-ball estimates.
+
+### 6. Same-color cluster shape prior
+
+v1.4.6 adds a conservative shape-prior diagnostic for dense clusters such as
+`DSC00540`.
+
+The failed strategy was to let the perimeter/interior traversal influence the
+fit directly. That remains disabled for final fitting because the current
+outside-in path does not yet provide enough evidence to decide which interior
+arcs are trustworthy.
+
+The active v1.4.6 rule is narrower and easier to audit:
+
+1. find adjacent-ball components;
+2. group cluster members by color/label;
+3. for same-label groups with enough members, compute a robust consensus
+   ellipse size and angle from the available per-ball observed ellipses;
+4. compare every ball in that same-color group against the consensus;
+5. flag a ball if its ellipse axes or orientation are physically inconsistent
+   with the rest of the cluster.
+
+This directly targets the `DSC00540` failure mode where red balls #9 and #12
+grab neighboring reflections/edges, producing ellipses roughly 1.3x too large
+and rotated away from the cluster consensus. In a real rack, neighboring balls
+can occlude arcs, but they cannot make one red ball physically project much
+larger than adjacent red balls at the same table region.
+
+Relevant config:
+
+```yaml
+cluster_optimization:
+  perimeter_weighted_fit_enabled: false
+  shape_prior_enabled: true
+  shape_prior_min_cluster_size: 5
+  shape_prior_min_label_count: 5
+  shape_prior_min_consensus_members: 4
+  shape_prior_major_scale_limit: 1.22
+  shape_prior_minor_scale_limit: 1.22
+  shape_prior_angle_delta_deg: 12.0
+```
+
+Exported per-ball diagnostics include:
+
+- `cluster_shape_prior`;
+- `cluster_shape_outlier`;
+- `cluster_shape_reasons`;
+- `cluster_shape_consensus_major_axis_px`;
+- `cluster_shape_consensus_minor_axis_px`;
+- `cluster_shape_consensus_angle_deg`;
+- `cluster_shape_major_scale`;
+- `cluster_shape_minor_scale`;
+- `cluster_shape_angle_delta_deg`.
+
+The review UI shows these diagnostics under `Cluster shape`, and the confidence
+logic now penalizes:
+
+- `cluster_shape_outlier`;
+- `cluster_ellipse_size_outlier`;
+- `cluster_ellipse_angle_outlier`;
+- `neighbor_ellipse_ownership_conflict`.
+
+Current limitation: v1.4.6 only flags and scores the inconsistency. It does not
+yet repair the fit. The next fitting strategy should be a constrained ellipse
+fit: use the same-color cluster consensus for axes/angle and solve mainly for
+the center from the visible arcs.
+
+### 7. Per-point rejection reasons and add-back diagnostics
+
+v1.4.7 makes rejected boundary points auditable at point level. A rejected
+point can have multiple reasons, but the UI assigns one primary color:
+
+| Primary reason | UI color | Meaning |
+|---|---|---|
+| `angular_segment_endpoint` | orange | likely bad point at the end of a broken arc |
+| `local_radius_spike` | red | local radial jump compared with nearby samples |
+| `neighbor_ellipse_overlap` | purple | point lies inside a nearby detected ball ellipse |
+| `ellipse_residual_outlier` | blue | point is far from the temporary robust ellipse |
+| `other_rejected` / `unknown_rejected` | pink | rejected without a more specific reason |
+
+The report exports:
+
+- `rejected_point_reasons`;
+- `rejected_reason_counts`.
+
+v1.4.7 also exports diagnostic add-back fits for each evidence view. These
+temporarily add selected rejected categories back and refit the ellipse:
+
+- accepted points only;
+- add arc endpoints;
+- add local radius spikes;
+- add neighbor-overlap rejects;
+- add ellipse-residual rejects;
+- add endpoints + local radius spikes;
+- add all rejected points.
+
+The UI reports the best shape-match scenario against the same-color cluster
+shape prior. This is diagnostic only. It is not yet used as the final estimate,
+because the add-back fit can still be wrong when the visible evidence is mostly
+from neighboring highlights or occluded arcs.
+
+v1.4.8 introduced a finer diagnostic requested from DSC00540 balls #9 and #12:
+`consensus_reject_refit`. Instead of adding a whole rejection category back,
+it grouped rejected points by local angular/spatial continuity, tried small
+group combinations, and kept the combination whose refitted ellipse best
+matched the same-color cluster consensus size and angle.
+
+v1.4.9 promotes the useful part of that idea into the final estimator. The
+active promoted path is now `arc_combination_refit`:
+
+1. start from all raw radial boundary samples, not only the first accepted
+   white dots;
+2. split the raw samples into angular/spatial arc groups;
+3. try useful group combinations;
+4. fit two candidate families:
+   - free ellipse from the selected arc points;
+   - shared-shape fixed ellipse, where axes/angle come from the same-color
+     cluster consensus and only the center is solved from the selected arcs;
+5. score candidates by cluster-shape agreement, residual, point coverage,
+   multi-arc support, center shift, and boundary ownership;
+6. promote only if the candidate passes the conservative promotion gate.
+
+When promoted, the selected arc clusters become the visible white dots, the
+remaining raw samples become red rejected dots, and the cream outline becomes
+the promoted final ellipse. The UI does not need separate add-back colors for
+normal review. The richer rejection reasons and top candidate lists remain in
+JSON/debug data.
+
+Current DSC00540 behavior:
+
+- red #9 promotes to a `cluster_shape_fixed` arc-combination fit;
+- red #12 promotes to a `cluster_shape_fixed` arc-combination fit;
+- red #14 stays with its baseline fit because the candidate improvement is too
+  small to justify changing the final estimate.
+
+This is still a bridge toward the generic cluster graph optimizer, not the full
+joint solver. It can repair obvious per-ball cluster mistakes, but it does not
+yet optimize every node, contact edge, missing hypothesis, and duplicate
+hypothesis jointly.
+
 ### Safeguards
 
 - Rejected points remain visible as red dots.
 - Rejected points do not affect the cream ellipse.
 - If filtering would leave too few points, the filter falls back to the safer
   unfiltered set.
-- The report exports raw/accepted/rejected counts and rejection reasons.
+- The report exports raw/accepted/rejected counts, per-point rejection reasons,
+  and add-back fit scenarios.
 
 ## Diagnostic evidence maps
 
@@ -214,7 +434,7 @@ For every ball, the system can write crop-aligned map images into:
 outputs/reports_v1_global_cloth/<image_stem>/evidence_maps/
 ```
 
-The v1 review UI exposes them through the selected-ball crop background
+The v1 review UI exposes them through the selected-ball evidence background
 selector.
 
 Implemented maps:
@@ -232,7 +452,7 @@ Implemented maps:
 
 v1.3.4 adds a separate boundary sampler for every evidence map. This is the
 feature behind the UI behavior where the white dots and cream ellipse change
-when the crop background dropdown changes.
+when the evidence-background row changes.
 
 The per-map variant is stored under:
 
@@ -286,9 +506,34 @@ The global reference is estimated once per image:
 For each ball crop, the ball interior is still sampled from the inner disk. The
 maps then compare this ball sample against the active cloth reference.
 
+Since v1.5.5, global-cloth diagnostic maps are computed over the full source
+image first, then cropped to the selected ball ROI for display and sampling.
+This matters because the previous implementation used the global cloth Lab
+value but still normalized Lab Delta-E, chroma, and grayscale edge inside each
+ball ROI. That made different balls appear to have different "background"
+scales even when they shared the same cloth reference.
+
+The current rule is:
+
+```text
+global cloth reference -> full-table Lab/chroma/edge maps -> ROI crop for each ball
+```
+
+not:
+
+```text
+global cloth reference -> per-ball ROI Lab/chroma/edge normalization
+```
+
+The ball-vs-cloth probability map remains partly ball-specific because it uses
+the selected ball's sampled interior Lab. However, it uses the full-table
+Lab/chroma maps as supporting inputs, so the underlying color-map scale is now
+stable across all balls in one image.
+
 The review UI shows:
 
 - active cloth reference mode;
+- evidence map source and normalization scope;
 - ball Lab;
 - active cloth Lab;
 - active Lab/chroma separation;
@@ -297,8 +542,21 @@ The review UI shows:
 - sample counts;
 - active parameter knobs.
 
-This is implemented in `compute_ball_evidence_maps()` and
-`estimate_global_cloth_reference()`.
+This is implemented in `compute_full_table_evidence_maps()`,
+`compute_ball_evidence_maps()`, and `estimate_global_cloth_reference()`.
+
+Since v1.5.6, the review UI also has display-only brightness/contrast/invert
+controls for the selected evidence background. These controls are deliberately
+not part of the recognition algorithm. They answer one narrow question:
+
+> Is this evidence map actually bad, or is the grayscale display range making it
+> look overexposed?
+
+Changing these sliders does not recalculate white boundary points, red rejected
+points, fitted ellipses, confidence, or exported table state. Real algorithm
+tuning will need a backend recomputation endpoint that accepts evidence
+parameters, regenerates the selected map/points/ellipse, and stores that run as a
+separate experiment rather than mutating the immutable report JSON.
 
 Current limitation: global cloth fixes contaminated local-annulus references,
 but it does not solve boundary ownership in clusters. In a tight rack, a map can
@@ -386,9 +644,10 @@ This is the next high-value recognition step after diagnostic-map review.
 
 | Strategy | Status |
 |---|---|
-| Diagnostic maps: gray edge, Lab Delta-E, chroma, ball-vs-cloth probability, physical projection band | Implemented and visualized as crop backgrounds |
+| Diagnostic maps: gray edge, Lab Delta-E, chroma, ball-vs-cloth probability, physical projection band | Implemented and visualized as evidence-map backgrounds |
 | Per-map boundary dots and cream ellipse | Implemented in v1.3.4; v1.3.6 promotes one configured variant to final source/table position |
 | Global cloth reference | Implemented in v1.3.8 and active by default for Lab Delta-E, chroma, and ball-vs-cloth probability |
+| Full-table global evidence-map normalization | Implemented in v1.5.5 for global-cloth Lab/chroma/edge maps; per-ball views are ROI crops of those full-table maps |
 | Local color model | Retained as diagnostic/fallback; no longer the default cloth reference |
 | Class-specific weighting | Implemented in the combined evidence map |
 | Blue physical projection as a weak prior | Implemented for diagnostic/scoring/optimization; recovered-point generation removed |
@@ -414,7 +673,7 @@ Open:
 http://127.0.0.1:8771/
 ```
 
-Select a ball. In the selected-ball panel, use the crop background selector to
+Select a ball. In the selected-ball panel, use the evidence-background selector to
 switch between:
 
 - source image;
@@ -427,7 +686,7 @@ switch between:
 
 When you switch the selector, three things should change together:
 
-1. the crop background image;
+1. the evidence background image;
 2. the white/red sampled boundary points;
 3. the cream observed ellipse fitted from those points.
 

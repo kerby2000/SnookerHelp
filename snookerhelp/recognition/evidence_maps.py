@@ -11,10 +11,12 @@ from snookerhelp.recognition.source_refinement import source_roi_bounds
 
 @dataclass(frozen=True)
 class BallEvidenceMaps:
-    """Local per-ball evidence maps used to explain and score weak boundaries.
+    """Per-ball evidence maps used to explain and score weak boundaries.
 
-    Arrays are ROI-local float32 maps normalized to 0..1. The JSON report should
-    store `summary`, not these arrays.
+    Arrays are ROI-aligned float32 maps scaled to 0..1. When a full-table
+    evidence cache is supplied, global-cloth color maps are full-table
+    normalized and then sliced to this ROI. The JSON report should store
+    `summary`, not these arrays.
     """
 
     roi: tuple[int, int, int, int]
@@ -32,6 +34,22 @@ class BallEvidenceMaps:
     @property
     def origin(self) -> tuple[int, int]:
         return int(self.roi[0]), int(self.roi[1])
+
+
+@dataclass(frozen=True)
+class FullTableEvidenceMaps:
+    """Full-source diagnostic maps using one global cloth reference.
+
+    These maps keep display/fit scaling consistent across all ball crops in one
+    image. Ball-specific probability is still computed per ball because it needs
+    the ball interior color, but it uses the full-table-normalized Lab/chroma
+    maps as supporting features.
+    """
+
+    gray_edge: np.ndarray
+    lab_delta_e: np.ndarray
+    chroma_difference: np.ndarray
+    summary: dict[str, Any]
 
 
 def compute_ball_evidence_maps(
@@ -104,13 +122,41 @@ def compute_ball_evidence_maps(
         else int(np.count_nonzero(cloth_mask))
     )
 
-    lab_delta = np.linalg.norm(lab - active_cloth_lab[None, None, :], axis=2)
-    chroma_delta = np.linalg.norm(lab[:, :, 1:3] - active_cloth_lab[None, None, 1:3], axis=2)
-
-    gray_edge = _normalized_sobel(gray)
-    normalization_mask = valid_color if use_global_cloth else (cloth_mask | inner_mask)
-    lab_delta_norm = _robust_normalize(lab_delta, normalization_mask)
-    chroma_norm = _robust_normalize(chroma_delta, normalization_mask)
+    full_table_maps = cfg.get("_full_table_evidence_maps")
+    use_full_table_maps = use_global_cloth and isinstance(full_table_maps, FullTableEvidenceMaps)
+    if use_full_table_maps:
+        gray_edge = _slice_full_table_map(full_table_maps.gray_edge, roi)
+        lab_delta_norm = _slice_full_table_map(full_table_maps.lab_delta_e, roi)
+        chroma_norm = _slice_full_table_map(full_table_maps.chroma_difference, roi)
+        map_source = "full_table_global_cloth_roi_crop"
+        display_normalization = str(
+            full_table_maps.summary.get(
+                "display_normalization",
+                "full_table_percentile_5_98",
+            )
+        )
+        normalization_scope = str(
+            full_table_maps.summary.get(
+                "normalization_scope",
+                "table_polygon_valid_pixels",
+            )
+        )
+        full_table_summary: dict[str, Any] | None = dict(full_table_maps.summary)
+    else:
+        lab_delta = np.linalg.norm(lab - active_cloth_lab[None, None, :], axis=2)
+        chroma_delta = np.linalg.norm(lab[:, :, 1:3] - active_cloth_lab[None, None, 1:3], axis=2)
+        normalization_mask = valid_color if use_global_cloth else (cloth_mask | inner_mask)
+        gray_edge = _normalized_sobel(gray, normalization_mask)
+        lab_delta_norm = _robust_normalize(lab_delta, normalization_mask)
+        chroma_norm = _robust_normalize(chroma_delta, normalization_mask)
+        map_source = (
+            "roi_local_global_cloth_reference"
+            if use_global_cloth
+            else "roi_local_annulus_cloth_reference"
+        )
+        display_normalization = "roi_local_percentile_5_98"
+        normalization_scope = "roi_valid_pixels" if use_global_cloth else "roi_inner_ball_and_cloth_annulus"
+        full_table_summary = None
     probability = _ball_probability_map(lab, active_cloth_lab, ball_lab, lab_delta_norm, chroma_norm, label)
     physical_band = _physical_band_score(crop.shape[:2], roi, sphere_projection, cfg)
     weights = _class_weights(label)
@@ -154,6 +200,10 @@ def compute_ball_evidence_maps(
         "status": "computed",
         "roi_px": [int(value) for value in roi],
         "label": str(label),
+        "map_source": map_source,
+        "display_normalization": display_normalization,
+        "normalization_scope": normalization_scope,
+        "full_table_evidence": full_table_summary,
         "active_color_model": active_color_model,
         "local_color_model": local_color_model,
         "global_cloth_model": global_cloth_model,
@@ -201,6 +251,80 @@ def compute_ball_evidence_maps(
     )
 
 
+def compute_full_table_evidence_maps(
+    *,
+    source_image: np.ndarray,
+    table_corners_px: list[Any] | tuple[Any, ...] | np.ndarray | None = None,
+    settings: dict[str, Any] | None = None,
+) -> FullTableEvidenceMaps | None:
+    """Compute full-source maps with one global cloth reference.
+
+    This does not crop around individual balls. It creates a stable reference
+    frame for Lab Delta-E, chroma difference, and grayscale edge maps so one
+    ball crop is comparable to another. Per-ball code later slices these arrays
+    to its ROI.
+    """
+
+    if source_image.ndim != 3 or source_image.size == 0:
+        return None
+    cfg = settings or {}
+    global_cloth_model = _global_cloth_model_from_settings(cfg)
+    if global_cloth_model is None:
+        return None
+
+    lab = cv2.cvtColor(source_image, cv2.COLOR_BGR2LAB).astype(np.float32)
+    hsv = cv2.cvtColor(source_image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    gray = cv2.cvtColor(source_image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    active_cloth_lab = np.asarray(global_cloth_model["cloth_lab"], dtype=np.float32)
+    table_mask, table_mask_method = _table_polygon_mask(
+        source_image.shape,
+        table_corners_px,
+        erode_px=int(cfg.get("global_cloth_erode_px", 24)),
+    )
+    valid_color = (
+        (hsv[:, :, 2] > float(cfg.get("minimum_value_for_color_model", 28.0)))
+        & (hsv[:, :, 2] < float(cfg.get("highlight_value_limit", 245.0)))
+    )
+    normalization_mask = table_mask & valid_color
+    minimum_samples = int(cfg.get("global_cloth_minimum_samples", 500))
+    if int(np.count_nonzero(normalization_mask)) < minimum_samples:
+        normalization_mask = valid_color
+        normalization_scope = "full_image_valid_pixels_fallback"
+    else:
+        normalization_scope = "table_polygon_valid_pixels"
+
+    lab_delta = np.linalg.norm(lab - active_cloth_lab[None, None, :], axis=2)
+    chroma_delta = np.linalg.norm(lab[:, :, 1:3] - active_cloth_lab[None, None, 1:3], axis=2)
+    gray_edge = _normalized_sobel(gray, normalization_mask)
+    lab_delta_norm = _robust_normalize(lab_delta, normalization_mask)
+    chroma_norm = _robust_normalize(chroma_delta, normalization_mask)
+
+    summary = {
+        "status": "computed",
+        "map_source": "full_table_global_cloth",
+        "display_normalization": "full_table_percentile_5_98",
+        "normalization_scope": normalization_scope,
+        "table_mask_method": table_mask_method,
+        "cloth_reference_mode": "global_table_cloth",
+        "cloth_lab": global_cloth_model.get("cloth_lab"),
+        "cloth_sample_count": int(global_cloth_model.get("sample_count", 0)),
+        "normalization_sample_count": int(np.count_nonzero(normalization_mask)),
+        "table_mask_erode_px": int(cfg.get("global_cloth_erode_px", 24)),
+        "maps": {
+            "gray_edge": _map_stats(gray_edge),
+            "lab_delta_e": _map_stats(lab_delta_norm),
+            "chroma_difference": _map_stats(chroma_norm),
+        },
+    }
+    return FullTableEvidenceMaps(
+        gray_edge=gray_edge.astype(np.float32),
+        lab_delta_e=lab_delta_norm.astype(np.float32),
+        chroma_difference=chroma_norm.astype(np.float32),
+        summary=summary,
+    )
+
+
 def estimate_global_cloth_reference(
     *,
     source_image: np.ndarray,
@@ -218,22 +342,13 @@ def estimate_global_cloth_reference(
     if source_image.ndim != 3 or source_image.size == 0:
         return {"status": "unavailable", "reason": "source image is not BGR"}
     cfg = settings or {}
-    height, width = int(source_image.shape[0]), int(source_image.shape[1])
-    mask = np.zeros((height, width), dtype=np.uint8)
-    corners_input = [] if table_corners_px is None else table_corners_px
-    corners = np.asarray(corners_input, dtype=np.float32).reshape(-1, 2)
-    if corners.shape[0] >= 3:
-        cv2.fillConvexPoly(mask, np.round(corners).astype(np.int32), 255)
-        method = "table_polygon"
-    else:
-        mask[:, :] = 255
-        method = "full_image_fallback"
-
     erode_px = int(cfg.get("global_cloth_erode_px", 24))
-    if erode_px > 0:
-        kernel_size = max(3, erode_px * 2 + 1)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-        mask = cv2.erode(mask, kernel, iterations=1)
+    mask_bool, method = _table_polygon_mask(
+        source_image.shape,
+        table_corners_px,
+        erode_px=erode_px,
+    )
+    mask = np.where(mask_bool, 255, 0).astype(np.uint8)
 
     exclusion_factor = float(cfg.get("global_cloth_exclusion_radius_factor", 2.2))
     excluded_balls = 0
@@ -383,6 +498,35 @@ def _map_roi(
     return x0, y0, x1, y1
 
 
+def _table_polygon_mask(
+    image_shape: tuple[int, int] | tuple[int, int, int],
+    table_corners_px: list[Any] | tuple[Any, ...] | np.ndarray | None,
+    *,
+    erode_px: int = 24,
+) -> tuple[np.ndarray, str]:
+    height, width = int(image_shape[0]), int(image_shape[1])
+    mask = np.zeros((height, width), dtype=np.uint8)
+    corners_input = [] if table_corners_px is None else table_corners_px
+    corners = np.asarray(corners_input, dtype=np.float32).reshape(-1, 2)
+    if corners.shape[0] >= 3:
+        cv2.fillConvexPoly(mask, np.round(corners).astype(np.int32), 255)
+        method = "table_polygon"
+    else:
+        mask[:, :] = 255
+        method = "full_image_fallback"
+
+    if erode_px > 0:
+        kernel_size = max(3, int(erode_px) * 2 + 1)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        mask = cv2.erode(mask, kernel, iterations=1)
+    return mask > 0, method
+
+
+def _slice_full_table_map(values: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
+    x0, y0, x1, y1 = roi
+    return values[int(y0) : int(y1), int(x0) : int(x1)].astype(np.float32, copy=False)
+
+
 def _median_lab(lab: np.ndarray, mask: np.ndarray) -> np.ndarray:
     pixels = lab[mask]
     if pixels.size == 0:
@@ -390,12 +534,13 @@ def _median_lab(lab: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.median(pixels, axis=0).astype(np.float32)
 
 
-def _normalized_sobel(gray: np.ndarray) -> np.ndarray:
+def _normalized_sobel(gray: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
     blur = cv2.GaussianBlur(gray, (3, 3), 0)
     gx = cv2.Sobel(blur, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3)
     magnitude = np.hypot(gx, gy)
-    return _robust_normalize(magnitude, np.ones_like(gray, dtype=bool))
+    active_mask = mask if mask is not None else np.ones_like(gray, dtype=bool)
+    return _robust_normalize(magnitude, active_mask)
 
 
 def _robust_normalize(values: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:

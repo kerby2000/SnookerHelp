@@ -44,6 +44,7 @@ def fit_ellipse_payload(
     major_angle = major_angle % 180.0
     payload: dict[str, Any] = {
         "status": "candidate",
+        "center_px": [float(center_x), float(center_y)],
         "center_x_px": float(center_x),
         "center_y_px": float(center_y),
         "major_axis_px": major,

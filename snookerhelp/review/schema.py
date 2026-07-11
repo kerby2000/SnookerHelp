@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from snookerhelp.core.ball_numbering import CANONICAL_BALL_NUMBERING_SCHEME
 from snookerhelp.core.schema import (
     ManualCorrection,
     ReviewBallFeedback,
@@ -16,10 +17,12 @@ def default_review_feedback(
     *,
     image_name: str,
     ball_ids: list[int],
+    numbering_scheme: str = CANONICAL_BALL_NUMBERING_SCHEME,
 ) -> ReviewFeedback:
     return ReviewFeedback(
         schema_version=V1_REVIEW_SCHEMA,
         image_name=image_name,
+        numbering_scheme=numbering_scheme,
         balls=[ReviewBallFeedback(ball_id=ball_id) for ball_id in ball_ids],
     )
 
@@ -57,6 +60,7 @@ def review_feedback_from_legacy(
     return ReviewFeedback(
         schema_version=V1_REVIEW_SCHEMA,
         image_name=image_name,
+        numbering_scheme=str(payload.get("numbering_scheme") or "legacy_raw_detector_order"),
         balls=balls,
         missing_balls=list(payload.get("missing_ball_hints") or []),
         audit_trail=list(payload.get("audit_trail") or []),
@@ -88,6 +92,7 @@ def _v1_review_from_dict(payload: dict[str, Any], *, image_name: str) -> ReviewF
     return ReviewFeedback(
         schema_version=V1_REVIEW_SCHEMA,
         image_name=str(payload.get("image_name") or image_name),
+        numbering_scheme=payload.get("numbering_scheme"),
         balls=balls,
         missing_balls=list(payload.get("missing_balls") or []),
         audit_trail=list(payload.get("audit_trail") or []),

@@ -115,8 +115,39 @@ cluster_optimization:
   pair_strength: 0.18
   collision_strength: 0.42
   anchor_blend: 0.08
+  perimeter_weighted_fit_enabled: false
+  perimeter_mobility: 0.55
+  interior_mobility: 1.00
+  perimeter_anchor_blend: 0.10
+  interior_anchor_blend: 0.04
   max_movement_mm: 14.0
   minimum_improvement_mm: 0.35
+  shell_classification_enabled: true
+  shell_classification_min_size: 5
+  shell_perimeter_distance_factor: 0.42
+  shape_prior_enabled: true
+  shape_prior_min_cluster_size: 5
+  shape_prior_min_label_count: 5
+  shape_prior_min_consensus_members: 4
+  shape_prior_min_point_count: 55
+  shape_prior_max_consensus_axis_ratio: 1.55
+  shape_prior_major_scale_limit: 1.22
+  shape_prior_minor_scale_limit: 1.22
+  shape_prior_angle_delta_deg: 12.0
+  arc_combo_fixed_shape_candidates_enabled: true
+  arc_combo_max_search_groups: 10
+  arc_combo_max_fixed_shape_combo_size: 5
+  joint_center_promotion_enabled: true
+  joint_center_promotion_min_component_size: 4
+  joint_center_promotion_roles: ["interior"]
+  joint_center_promotion_min_improvement_mm: 0.75
+  joint_center_promotion_min_movement_mm: 0.25
+  joint_center_promotion_max_movement_mm: 10.0
+  joint_center_promotion_require_weak_image_evidence: true
+  joint_center_promotion_max_view_score_for_weak: 75.0
+  joint_center_promotion_min_physical_residual_for_weak_px: 2.0
+  joint_center_promotion_max_point_count_for_weak: 70
+  joint_center_promotion_allow_shape_outliers: true
 
 selection:
   max_balls: 22

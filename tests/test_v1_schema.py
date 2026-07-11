@@ -1,3 +1,7 @@
+from snookerhelp.core.ball_numbering import (
+    CANONICAL_BALL_NUMBERING_SCHEME,
+    canonical_ball_id_map,
+)
 from snookerhelp.recognition import table_state_from_legacy_report
 from snookerhelp.review.schema import (
     V1_REVIEW_SCHEMA,
@@ -151,6 +155,11 @@ def test_v1_table_state_adapter_uses_product_language() -> None:
 
     assert payload["schema_version"] == "snookerhelp.table_state.v1"
     assert payload["image_name"] == "DSC00542"
+    assert payload["diagnostics"]["ball_numbering_scheme"] == CANONICAL_BALL_NUMBERING_SCHEME
+    assert payload["diagnostics"]["raw_to_canonical_ball_ids"]["22"] == 3
+    assert ball["ball_id"] == 3
+    assert ball["evidence"]["diagnostics"]["ball_numbering"]["raw_detector_id"] == 22
+    assert ball["evidence"]["diagnostics"]["ball_numbering"]["slot"] == "green"
     assert ball["evidence"]["image_model"]["model_type"] == "edge_ellipse"
     assert ball["evidence"]["physical_model"]["model_type"] == "projected_sphere"
     assert ball["confidence"]["method"] == "physical_model_plus_image_evidence"
@@ -212,6 +221,7 @@ def test_review_feedback_adapter_reads_legacy_review_json() -> None:
 
     payload = review.to_dict()
     assert payload["schema_version"] == V1_REVIEW_SCHEMA
+    assert payload["numbering_scheme"] == "legacy_raw_detector_order"
     assert payload["balls"][0]["ball_id"] == 3
     assert payload["balls"][0]["manual_correction"]["source_px"] == [10.0, 20.0]
     assert payload["missing_balls"][0]["label_guess"] == "red"
@@ -221,5 +231,27 @@ def test_default_review_feedback_initializes_all_balls_unreviewed() -> None:
     feedback = default_review_feedback(image_name="DSC00524", ball_ids=[1, 2, 3])
 
     assert feedback.schema_version == V1_REVIEW_SCHEMA
+    assert feedback.numbering_scheme == CANONICAL_BALL_NUMBERING_SCHEME
     assert [ball.ball_id for ball in feedback.balls] == [1, 2, 3]
     assert {ball.decision for ball in feedback.balls} == {"unreviewed"}
+
+
+def test_canonical_ball_numbering_fixed_colours_then_table_ordered_reds() -> None:
+    balls = [
+        {"id": 40, "class": "red", "source_refined_table_xy_mm": [300.0, 200.0]},
+        {"id": 10, "class": "green", "source_refined_table_xy_mm": [10.0, 10.0]},
+        {"id": 41, "class": "red", "source_refined_table_xy_mm": [100.0, 100.0]},
+        {"id": 42, "class": "red", "source_refined_table_xy_mm": [200.0, 100.0]},
+        {"id": 1, "class": "white", "source_refined_table_xy_mm": [500.0, 500.0]},
+        {"id": 5, "class": "blue", "source_refined_table_xy_mm": [250.0, 250.0]},
+    ]
+
+    mapping = canonical_ball_id_map(balls)
+
+    assert mapping[1]["canonical_ball_id"] == 1
+    assert mapping[10]["canonical_ball_id"] == 3
+    assert mapping[5]["canonical_ball_id"] == 5
+    assert mapping[41]["canonical_ball_id"] == 8
+    assert mapping[42]["canonical_ball_id"] == 9
+    assert mapping[40]["canonical_ball_id"] == 10
+    assert mapping[41]["slot"] == "red_01"

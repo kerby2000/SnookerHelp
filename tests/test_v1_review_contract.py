@@ -4,6 +4,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+from snookerhelp.core.ball_numbering import CANONICAL_BALL_NUMBERING_SCHEME
 from snookerhelp.review.evidence_export import review_payload_from_report
 from snookerhelp.review.feedback import (
     load_feedback_from_reports_root,
@@ -90,6 +91,9 @@ def test_v1_review_payload_from_report_has_table_state_and_feedback(tmp_path: Pa
 
     assert payload["table_state"]["schema_version"] == "snookerhelp.table_state.v1"
     assert payload["review_feedback"]["schema_version"] == "snookerhelp.review_feedback.v1"
+    assert payload["review_feedback"]["numbering_scheme"] == CANONICAL_BALL_NUMBERING_SCHEME
+    assert payload["table_state"]["balls"][0]["ball_id"] == 8
+    assert payload["review_feedback"]["balls"][0]["ball_id"] == 8
     assert payload["table_state"]["balls"][0]["confidence"]["reasons"] == [
         "image_evidence_and_physical_model_match"
     ]
@@ -103,7 +107,8 @@ def test_v1_server_payload_loaders_use_v1_schema(tmp_path: Path) -> None:
 
     assert table_payload["table_state"]["schema_version"] == "snookerhelp.table_state.v1"
     assert table_payload["assets_base"] == "/assets/DSC00001/"
-    assert review_payload["review_feedback"]["balls"][0]["ball_id"] == 1
+    assert review_payload["review_feedback"]["numbering_scheme"] == CANONICAL_BALL_NUMBERING_SCHEME
+    assert review_payload["review_feedback"]["balls"][0]["ball_id"] == 8
 
 
 def test_v1_server_put_saves_manual_correction_and_missing_ball(tmp_path: Path) -> None:
@@ -117,9 +122,10 @@ def test_v1_server_put_saves_manual_correction_and_missing_ball(tmp_path: Path) 
         payload = {
             "schema_version": "snookerhelp.review_feedback.v1",
             "image_name": "DSC00001",
+            "numbering_scheme": CANONICAL_BALL_NUMBERING_SCHEME,
             "balls": [
                 {
-                    "ball_id": 1,
+                    "ball_id": 8,
                     "decision": "needs_review",
                     "issue_tags": ["near cushion"],
                     "comment": "manual correction",
@@ -214,14 +220,36 @@ def test_v1_static_html_uses_product_language() -> None:
     assert "floatingLegend" in html
     assert "Help / legend" in html
     assert "uiVersion" in html
-    assert 'const UI_VERSION = "v1.3.9"' in app
+    assert "sourceZoomLabel" in html
+    assert "sourceFitSelected" in html
+    assert 'const UI_VERSION = "v1.5.6"' in app
+    assert "setupSourceViewport" in app
+    assert "fitSourceToSelected" in app
+    assert "zoomSourceAtClient" in app
+    assert "updateSourceLabelScale" in app
+    assert "sourcePrintClusterOrder" in html
+    assert "printClusterOrder" in app
     assert "recoveredBoundaryDots" not in app
-    assert "Crop background" in app
+    assert "Evidence background" in app
+    assert "Display tuning" in app
+    assert "view only; fit is unchanged" in app
     assert "Evidence-view score" in html
-    assert "Neighbor ellipses" in html
+    assert "Neighbor geometry" in html
     assert "neighbor ellipses" in app
+    assert "Cluster labels" in html
+    assert "Cluster traversal" in app
+    assert "clusterTraversalText" in app
     assert "Final source center" in html
     assert "Confidence score" in html
+    assert "Rejected reasons" in app
+    assert "addbackScenarioSummary" in app
+    assert "Add-back fit scenarios" not in app
+    assert "Consensus add-back fit" not in app
+    assert "Cluster arc-combo fit" in app
+    assert "drawConsensusRejectRefit" not in app
+    assert "consensus-selected rejects" not in html.lower()
+    assert "Cluster-combination promotion" in html
+    assert "arc_combination_refit" in app
     assert "overlay-matrix" in app
     assert "view_score" in app
     assert "evidenceViewScore" in app
@@ -230,7 +258,7 @@ def test_v1_static_html_uses_product_language() -> None:
     assert "overlaySelectionFor" in app
     assert "selectedBoundaryVariant" in app
     assert "ball_vs_cloth_probability" in app
-    assert "Physical model" in app
+    assert "physicalModelRows" in app
     assert "Approximate camera model limits trust" in app
     assert "Scene constraints" in app
     assert "Copy selected summary" not in html
@@ -298,7 +326,8 @@ def test_v1_feedback_export_reads_review_v1_files(tmp_path: Path) -> None:
     review = {
         "schema_version": "snookerhelp.review_feedback.v1",
         "image_name": "DSC00001",
-        "balls": [{"ball_id": 1, "decision": "ok", "issue_tags": ["checked"]}],
+        "numbering_scheme": CANONICAL_BALL_NUMBERING_SCHEME,
+        "balls": [{"ball_id": 8, "decision": "ok", "issue_tags": ["checked"]}],
         "missing_balls": [{"label_guess": "red", "source_px": [10.0, 20.0]}],
     }
     (report_path.parent / "review_v1.json").write_text(json.dumps(review), encoding="utf-8")

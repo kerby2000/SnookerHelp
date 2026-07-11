@@ -1,6 +1,6 @@
 # SnookerHelp v1 migration status
 
-Last updated: 2026-07-02.
+Last updated: 2026-07-06.
 
 ## Completed
 
@@ -158,6 +158,124 @@ Last updated: 2026-07-02.
   review UI.
 - Deleted the remaining `legacy/tools_v0/*.py` source snapshots after active
   validation/calibration/process/report/export commands passed smoke gates.
+- Added v1.4.0 generic large-cluster shell diagnostics:
+  - any sufficiently large adjacent-ball component is classified into
+    perimeter/interior shells using repeated convex-hull-distance peeling;
+  - the v1 UI shows shell tags such as `P1` and `I2` on the full-table view;
+  - selected-ball panels expose shell role, hull distance, and neighbor degree;
+  - DSC00540 now reports one 15-red cluster with 12 perimeter balls and
+    3 interior balls;
+  - shell classification is diagnostic only and does not yet alter final
+    source centers or table coordinates.
+- Added v1.4.1 stable canonical display/review numbering:
+  - fixed-colour slots are stable across images:
+    `#1 white`, `#2 yellow`, `#3 green`, `#4 brown`, `#5 blue`,
+    `#6 pink`, `#7 black`;
+  - reds use deterministic table order as `#8-22`, sorted by table `Y`, then
+    table `X`, then raw detector ID;
+  - raw detector IDs remain in diagnostics as `raw_detector_id`;
+  - old review feedback without the v1 numbering marker is remapped from raw
+    detector IDs to canonical IDs on load.
+- Added v1.4.2 large-cluster traversal diagnostics:
+  - large adjacent-ball clusters now emit outside-in clockwise and
+    counter-clockwise traversal paths;
+  - per-ball diagnostics include `cluster_traversal_rank_cw`,
+    `cluster_traversal_rank_ccw`, and `cluster_traversal_primary_rank`;
+  - the v1 UI shows `Txx` labels alongside `P1` / `I2` shell labels;
+  - traversal is diagnostic only and does not yet constrain interior-ball
+    fitting.
+- Added v1.4.3 full-table source-panel pan/zoom:
+  - mouse wheel zooms the left source image;
+  - drag pans the full-table viewport;
+  - source image and SVG labels/markers are transformed together;
+  - header controls provide zoom in/out, reset, and Fit selected;
+  - this is UI-only and does not change detection or fitting.
+- Added v1.4.4 source-panel interaction fix:
+  - full-table marker clicks again select the clicked ball instead of starting
+    a pan gesture;
+  - source labels keep a readable screen size while the source image is zoomed;
+  - source labels no longer block clicks on nearby markers.
+- Added v1.4.5 large-cluster path diagnostics:
+  - cluster traversal now includes a top-left-start outside-in perimeter walk
+    and its reverse, in addition to the earlier angular CW/CCW paths;
+  - `Txx` labels use the perimeter-walk rank when available;
+  - the source panel has a Print order button that logs the cluster path table
+    to the browser console;
+  - `tools/print_cluster_order.py` prints raw and canonical cluster paths from
+    a generated report.
+- Added v1.4.6 same-color cluster shape prior:
+  - disabled perimeter-weighted cluster fitting as a main behavior
+    (`perimeter_weighted_fit_enabled: false`);
+  - large same-color clusters now compute a robust consensus ellipse size and
+    angle from member balls;
+  - each member reports whether its ellipse is a size/angle outlier relative to
+    that consensus;
+  - review warnings/confidence now include cluster shape outliers and
+    neighbor-ellipse ownership conflicts;
+  - the v1 UI shows a `Cluster shape` row for the selected ball.
+- Added v1.4.7 per-point rejection audits and category add-back diagnostics:
+  - rejected boundary points now carry primary reasons in diagnostics;
+  - the v1 UI returned to the simpler default visual language: white accepted
+    dots and red rejected dots only;
+  - evidence rows export diagnostic add-back scenarios that refit ellipses
+    after temporarily reusing selected rejection categories.
+- Added v1.4.8 consensus-selected reject add-back diagnostics:
+  - rejected points are grouped into local angular/spatial arcs;
+  - small group combinations are refitted and scored against same-color cluster
+    consensus size/angle;
+  - the active UI no longer exposes separate colored add-back dots by default;
+  - eligible arc-combination fits can now be promoted into final source centers
+    only after passing conservative cluster-shape and residual gates.
+- Added generic v1 cluster graph and boundary-ownership diagnostics:
+  - `snookerhelp.recognition.cluster_graph` builds ball/contact graph nodes,
+    edges, arbitrary cluster components, duplicate/overlap warnings, and
+    dense/possible-rack-like classifications without assuming a rack template;
+  - `snookerhelp.recognition.boundary_ownership` classifies current boundary
+    samples as target boundary, contact seam, neighboring-ball owned, weak
+    target boundary, or unowned outlier;
+  - `snookerhelp.recognition.cluster_optimizer` wraps the existing adjacent
+    cluster optimizer, the generic graph, and boundary ownership into one
+    scene-constraint payload;
+  - arc-combination promotion now receives nearby source ellipses and records
+    ownership score diagnostics, while the v1 crop UI still shows only white
+    accepted dots, red rejected dots, cream fit, and final center by default;
+  - DSC00540 now exports a `generic_cluster_scene` with a `possible_rack_like`
+    component and per-ball ownership summaries.
+- Added shared-shape arc-combination promotion:
+  - `snookerhelp.recognition.arc_combo_fit` now tries raw boundary arc
+    combinations with both free ellipse fits and shared-shape fixed fits;
+  - fixed-shape candidates use the same-color cluster consensus axes/angle and
+    fit mainly the center from selected arc clusters;
+  - if a free ellipse and fixed shared-shape ellipse explain the same points
+    equally well, the fixed shared-shape model wins the tie because it is more
+    physically constrained;
+  - promoted results replace the final source center, final boundary points,
+    cream fitted outline, table Z-plane projections, and sphere-projection
+    scoring for that ball;
+  - non-promoted candidates remain diagnostics only.
+- Added v1.5.2 gated arbitrary-cluster graph center promotion:
+  - the adjacent-cluster optimizer still remains diagnostic by itself;
+  - `snookerhelp.recognition.cluster_promotion` is the explicit promotion gate
+    that may replace a final source center with a graph-joint center;
+  - promotion is currently limited to weak interior balls in clusters of 4+
+    with improved contact-distance RMS and bounded movement;
+  - arc-combination image fits run first, then the graph gate can override the
+    final center when the physical cluster graph is the safer evidence source;
+  - this is the first promoted slice of the ChatGPT Pro arbitrary contact-graph
+    strategy. It is not yet a full missing/duplicate hypothesis solver.
+
+Current DSC00540 behavior after this slice:
+
+- red #9 promotes from `arc_combo_ball_vs_cloth_probability` using a
+  `cluster_shape_fixed` candidate: approximately `94.5 x 78.2 px @ 2.1 deg`;
+- red #12 first gets an arc-combination candidate but the final source center is
+  now promoted from `cluster_graph_joint_center` because it is an interior
+  weak-evidence cluster ball;
+- red #7 and red #8 also promote final centers from the graph-joint path;
+- red #14 remains on its baseline evidence fit because the candidate does not
+  improve shape score enough to justify changing a mostly acceptable estimate;
+- no rack-template assumption is used; the shape prior is derived from the
+  adjacent same-color cluster.
 
 ## Current gates
 
@@ -165,8 +283,30 @@ Most recent local checks:
 
 ```text
 python -m pytest -q
-108 passed in the current migration gate; v1.3.1 targeted and full gates are
-listed below.
+112 passed in the current migration gate.
+
+python -m pytest tests/test_cluster_promotion.py tests/test_cluster_optimize.py tests/test_arc_combo_fit.py tests/test_cluster_graph_and_ownership.py -q
+18 passed
+
+python tools/generate_image_report.py --image Media/05_clusters/DSC00540.JPG --output outputs/reports --selected-ball auto
+DSC00540 report regenerated; graph-joint final centers promoted for #7, #8, #12.
+
+python -m pytest tests/test_ellipse_fit.py tests/test_v1_review_contract.py tests/test_v1_schema.py -q
+13 passed
+
+node --check snookerhelp\review\static\app.js
+passed
+
+python -m snookerhelp.tools.validate --kind samples
+Exact counts: 21/21; mean absolute count error: 0.000
+
+python tools/generate_dataset_reports.py --glob "Media/**/*.JPG" --output outputs/reports_v1_global_cloth
+21/21 reports generated; DSC00540 exposes P1/I2 shells and CW/CCW traversal ranks
+
+v1.4.0 targeted and historical gates are listed below.
+
+python -m pytest tests/test_cluster_optimize.py tests/test_v1_schema.py tests/test_v1_review_contract.py tests/test_v1_review_ui_legacy_deleted.py -q
+16 passed
 
 python -m snookerhelp.tools.validate --kind samples
 Exact counts: 21/21; mean absolute count error: 0.000
@@ -200,6 +340,9 @@ python tools/generate_dataset_reports.py --glob "Media/**/*.JPG" --output output
 
 python tools/generate_dataset_reports.py --glob "Media/**/*.JPG" --output outputs/reports_v1_vision_deleted_gate
 21/21 reports generated
+
+python tools/generate_dataset_reports.py --glob "Media/**/*.JPG" --output outputs/reports_v1_global_cloth
+21/21 reports generated; DSC00540 cluster shell split is 12 perimeter / 3 interior
 
 python tools/benchmark_model_scoring.py --reports outputs/reports_v1_gate --output outputs/model_scoring_benchmark_v1_entrypoint_gate
 Displayed mean confidence: 0.694
@@ -575,3 +718,61 @@ The v1 refactor migration cleanup is complete under the current acceptance
 gates. Further work should be product/recognition work, not legacy migration:
 real ChArUco calibration, stronger physical model selection, detector tuning,
 and review-feedback-driven recognition improvements.
+
+## v1.5.5 evidence-map normalization correction
+
+The previous global-cloth mode used one global cloth Lab reference, but Lab
+Delta-E, chroma, and grayscale edge evidence maps were still normalized inside
+each ball ROI. That made the same full-table cloth look different from ball to
+ball in the review UI and made per-map scores harder to compare.
+
+v1.5.5 adds a full-table evidence-map cache:
+
+```text
+global cloth reference
+  -> full-table Lab Delta-E / chroma / grayscale-edge maps
+  -> per-ball ROI crop for display and boundary sampling
+```
+
+The ball-vs-cloth probability map remains ball-specific because it uses the
+selected ball's interior Lab sample, but its Lab/chroma support maps are now
+full-table-normalized in global cloth mode.
+
+Implementation locations:
+
+- `snookerhelp/recognition/evidence_maps.py`
+  - `compute_full_table_evidence_maps()`
+  - ROI slicing inside `compute_ball_evidence_maps()`
+- `snookerhelp/recognition/estimator.py`
+  - computes one full-table evidence cache per processed image
+- `snookerhelp/review/evidence_builder.py`
+  - reuses one full-table evidence cache while writing review assets
+- `snookerhelp/review/static/app.js`
+  - UI version `v1.5.5`
+  - image evidence panel now shows map source, normalization, and scope
+
+Focused gate:
+
+```text
+python -m pytest tests/test_evidence_maps.py tests/test_v1_review_contract.py -q
+11 passed
+```
+
+## v1.5.6 evidence display tuning
+
+Added display-only controls in the v1 review UI:
+
+- brightness;
+- contrast;
+- invert;
+- reset display.
+
+These controls are per selected evidence background and are meant only for
+visual inspection of overexposed or low-contrast diagnostic maps. They do not
+change recognition outputs, white/red boundary points, fitted ellipses,
+confidence, or table-state JSON.
+
+The next step, if interactive tuning is needed, is a backend recomputation
+endpoint that accepts map/sampling parameters and returns a temporary
+experiment result for the selected ball. That should be kept separate from
+immutable generated reports.

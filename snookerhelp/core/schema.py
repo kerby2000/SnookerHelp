@@ -154,6 +154,7 @@ class ReviewBallFeedback:
 class ReviewFeedback:
     schema_version: str
     image_name: str
+    numbering_scheme: str | None = None
     balls: list[ReviewBallFeedback] = field(default_factory=list)
     missing_balls: list[dict[str, Any]] = field(default_factory=list)
     audit_trail: list[dict[str, Any]] = field(default_factory=list)
