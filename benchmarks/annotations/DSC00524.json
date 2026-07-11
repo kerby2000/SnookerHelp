@@ -1,0 +1,470 @@
+{
+  "schema_version": "snookerhelp.ground_truth.v1",
+  "image_name": "DSC00524",
+  "coordinate_system": "source_px",
+  "balls": [
+    {
+      "label": "white",
+      "coordinate_system": "source_px",
+      "point": [
+        884.8925476074219,
+        2020.749038696289
+      ],
+      "ball_id": 1,
+      "ellipse_px": {
+        "center_px": [
+          884.8925476074219,
+          2020.749038696289
+        ],
+        "major_axis_px": 98.0285,
+        "minor_axis_px": 77.466,
+        "angle_deg": 179.54650000000004,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "yellow",
+      "coordinate_system": "source_px",
+      "point": [
+        4570.5146,
+        2939.6245
+      ],
+      "ball_id": 2,
+      "ellipse_px": {
+        "center_px": [
+          4570.5146,
+          2939.6245
+        ],
+        "major_axis_px": 92.1123,
+        "minor_axis_px": 77.3674,
+        "angle_deg": 29.11439999999999,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "green",
+      "coordinate_system": "source_px",
+      "point": [
+        4708.219299316406,
+        2746.813430786133
+      ],
+      "ball_id": 3,
+      "ellipse_px": {
+        "center_px": [
+          4708.219299316406,
+          2746.813430786133
+        ],
+        "major_axis_px": 95.32599055707072,
+        "minor_axis_px": 73.84200505060977,
+        "angle_deg": 16.457816749443396,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "brown",
+      "coordinate_system": "source_px",
+      "point": [
+        4529.126022338867,
+        2334.9561309814453
+      ],
+      "ball_id": 4,
+      "ellipse_px": {
+        "center_px": [
+          4529.126022338867,
+          2334.9561309814453
+        ],
+        "major_axis_px": 88.58682753835711,
+        "minor_axis_px": 76.40030686088372,
+        "angle_deg": 7.607834007090958,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "blue",
+      "coordinate_system": "source_px",
+      "point": [
+        2878.2732,
+        2242.677
+      ],
+      "ball_id": 5,
+      "ellipse_px": {
+        "center_px": [
+          2878.2732,
+          2242.677
+        ],
+        "major_axis_px": 78.82591534745582,
+        "minor_axis_px": 78.20858355830237,
+        "angle_deg": 172.172567674005,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "pink",
+      "coordinate_system": "source_px",
+      "point": [
+        2643.799087524414,
+        3065.091064453125
+      ],
+      "ball_id": 6,
+      "ellipse_px": {
+        "center_px": [
+          2643.799087524414,
+          3065.091064453125
+        ],
+        "major_axis_px": 84.86801349534247,
+        "minor_axis_px": 79.50468769002177,
+        "angle_deg": 113.13317916650516,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "black",
+      "coordinate_system": "source_px",
+      "point": [
+        1464.3328857421875,
+        1756.0062713623047
+      ],
+      "ball_id": 7,
+      "ellipse_px": {
+        "center_px": [
+          1464.3328857421875,
+          1756.0062713623047
+        ],
+        "major_axis_px": 86.5968646429457,
+        "minor_axis_px": 77.6754,
+        "angle_deg": 8.555135513396351,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2908.5085,
+        3108.1448
+      ],
+      "ball_id": 8,
+      "ellipse_px": {
+        "center_px": [
+          2908.5085,
+          3108.1448
+        ],
+        "major_axis_px": 83.5738,
+        "minor_axis_px": 78.8594,
+        "angle_deg": 95.40129999999999,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1543.7063903808594,
+        2749.6617736816406
+      ],
+      "ball_id": 9,
+      "ellipse_px": {
+        "center_px": [
+          1543.7063903808594,
+          2749.6617736816406
+        ],
+        "major_axis_px": 89.16669694243815,
+        "minor_axis_px": 77.30920665144764,
+        "angle_deg": 156.10642358854187,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4401.5801,
+        2759.8572
+      ],
+      "ball_id": 10,
+      "ellipse_px": {
+        "center_px": [
+          4401.5801,
+          2759.8572
+        ],
+        "major_axis_px": 88.8417,
+        "minor_axis_px": 77.4457,
+        "angle_deg": 25.156599999999997,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2548.556121826172,
+        2510.3697509765625
+      ],
+      "ball_id": 11,
+      "ellipse_px": {
+        "center_px": [
+          2548.556121826172,
+          2510.3697509765625
+        ],
+        "major_axis_px": 80.8057,
+        "minor_axis_px": 78.4511,
+        "angle_deg": 149.76599999999996,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        3018.744842529297,
+        1690.1478576660156
+      ],
+      "ball_id": 12,
+      "ellipse_px": {
+        "center_px": [
+          3018.744842529297,
+          1690.1478576660156
+        ],
+        "major_axis_px": 77.8472,
+        "minor_axis_px": 77.75244767974966,
+        "angle_deg": 92.36240095680171,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1209.386734008789,
+        1573.654541015625
+      ],
+      "ball_id": 13,
+      "ellipse_px": {
+        "center_px": [
+          1209.386734008789,
+          1573.654541015625
+        ],
+        "major_axis_px": 92.67780699021124,
+        "minor_axis_px": 76.9177,
+        "angle_deg": 12.771002581554626,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1803.0242,
+        1505.8632
+      ],
+      "ball_id": 14,
+      "ellipse_px": {
+        "center_px": [
+          1803.0242,
+          1505.8632
+        ],
+        "major_axis_px": 85.5472,
+        "minor_axis_px": 77.5276,
+        "angle_deg": 19.024699999999996,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2232.6982,
+        1505.5178
+      ],
+      "ball_id": 15,
+      "ellipse_px": {
+        "center_px": [
+          2232.6982,
+          1505.5178
+        ],
+        "major_axis_px": 82.5514,
+        "minor_axis_px": 77.9179,
+        "angle_deg": 23.938600000000008,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1544.1836395263672,
+        1494.6136779785156
+      ],
+      "ball_id": 16,
+      "ellipse_px": {
+        "center_px": [
+          1544.1836395263672,
+          1494.6136779785156
+        ],
+        "major_axis_px": 88.5281,
+        "minor_axis_px": 77.1279,
+        "angle_deg": 17.001900000000006,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4631.5068,
+        1471.3087
+      ],
+      "ball_id": 17,
+      "ellipse_px": {
+        "center_px": [
+          4631.5068,
+          1471.3087
+        ],
+        "major_axis_px": 90.4088,
+        "minor_axis_px": 76.9406,
+        "angle_deg": 162.8121,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4050.6365,
+        1383.3201
+      ],
+      "ball_id": 18,
+      "ellipse_px": {
+        "center_px": [
+          4050.6365,
+          1383.3201
+        ],
+        "major_axis_px": 84.2553,
+        "minor_axis_px": 77.1234,
+        "angle_deg": 153.3539,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4443.2905,
+        1353.1541
+      ],
+      "ball_id": 19,
+      "ellipse_px": {
+        "center_px": [
+          4443.2905,
+          1353.1541
+        ],
+        "major_axis_px": 88.3952,
+        "minor_axis_px": 77.1533,
+        "angle_deg": 157.5895,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        5422.064208984375,
+        1269.0409240722656
+      ],
+      "ball_id": 20,
+      "ellipse_px": {
+        "center_px": [
+          5422.064208984375,
+          1269.0409240722656
+        ],
+        "major_axis_px": 105.00754742651932,
+        "minor_axis_px": 76.02627319157091,
+        "angle_deg": 164.66523576037935,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2603.0352,
+        949.049
+      ],
+      "ball_id": 21,
+      "ellipse_px": {
+        "center_px": [
+          2603.0352,
+          949.049
+        ],
+        "major_axis_px": 83.2862,
+        "minor_axis_px": 78.4982,
+        "angle_deg": 62.91640000000001,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2705.8043212890625,
+        918.4756927490234
+      ],
+      "ball_id": 22,
+      "ellipse_px": {
+        "center_px": [
+          2705.8043212890625,
+          918.4756927490234
+        ],
+        "major_axis_px": 81.08693442687044,
+        "minor_axis_px": 78.3784,
+        "angle_deg": 69.43938744464066,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    }
+  ],
+  "image_path": "Media\\02_random_balls\\DSC00524.JPG"
+}

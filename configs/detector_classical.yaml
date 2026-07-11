@@ -137,7 +137,10 @@ cluster_optimization:
   arc_combo_fixed_shape_candidates_enabled: true
   arc_combo_max_search_groups: 10
   arc_combo_max_fixed_shape_combo_size: 5
-  joint_center_promotion_enabled: true
+  # Retained for diagnostics only. These sequential/per-ball promotions caused
+  # the measured 32-36 px DSC00540 center failures.
+  legacy_arc_combo_promotion_enabled: false
+  joint_center_promotion_enabled: false
   joint_center_promotion_min_component_size: 4
   joint_center_promotion_roles: ["interior"]
   joint_center_promotion_min_improvement_mm: 0.75
@@ -148,6 +151,27 @@ cluster_optimization:
   joint_center_promotion_min_physical_residual_for_weak_px: 2.0
   joint_center_promotion_max_point_count_for_weak: 70
   joint_center_promotion_allow_shape_outliers: true
+
+joint_cluster_solver:
+  enabled: true
+  rack_joint_promotion_enabled: true
+  rack_component_size: 15
+  rack_min_red_fraction: 0.90
+  joint_shape_min_member_count: 6
+  joint_shape_max_axis_ratio: 1.60
+  rack_min_contact_vectors: 8
+  rack_phase_search_steps: 240
+  rack_assignment_robust_limit_factor: 0.45
+  rack_anchor_residual_factor: 0.16
+  rack_arc_refine_iterations: 2
+  rack_arc_refine_min_points: 5
+  rack_arc_refine_max_shift_px: 5.5
+  global_arc_residual_gate_px: 5.0
+  global_arc_ambiguity_margin_px: 0.6
+  rack_promotion_min_anchor_count: 8
+  rack_promotion_max_anchor_rms_px: 6.0
+  rack_promotion_min_owned_points_per_node: 5
+  rack_promotion_min_owned_node_count: 14
 
 selection:
   max_balls: 22

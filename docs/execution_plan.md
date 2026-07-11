@@ -64,7 +64,7 @@ can hide one duplicate plus one missed ball.
 
 ## Phase 1 - evidence experiment and image-space ground truth
 
-Status: implementation complete; acceptance data in progress
+Status: complete
 
 ### Deliverables
 
@@ -109,14 +109,21 @@ boundary extraction and fitting. It is not automatically treated as the true
 Current evidence:
 
 - DSC00540 has 22/22 saved perfect ellipses;
-- production median center error is 0.80 px, but mean is 8.65 px because five
-  interior reds fail badly;
-- worst cluster fits are #12, #14, #17, #19, and #21 with 25-29 px contour RMS;
-- one loose-ball annotation set is still required before closing this gate.
+- DSC00524 has 22/22 saved perfect ellipses and is the loose-ball regression
+  baseline;
+- saved annotations remain independent of detector/report output;
+- the experiment endpoint, ellipse editor, reload behavior, and benchmark
+  contracts are covered by the passing test suite.
 
 ## Phase 2 - tracked gold benchmark
 
 Status: in progress
+
+Current annotation coverage:
+
+- complete: DSC00524 and DSC00540;
+- being reviewed: DSC00529, DSC00534, and DSC00542;
+- not yet part of an algorithm promotion gate: DSC00525 and DSC00543.
 
 ### Initial gold images
 
@@ -172,7 +179,7 @@ Status: pending
 
 ## Phase 4 - joint cluster solver
 
-Status: pending
+Status: intact-rack slice complete; arbitrary clusters pending
 
 ### Replace, do not extend, the late repair stack
 
@@ -192,6 +199,61 @@ The replacement operates on a complete connected component with:
 
 Perimeter/interior classification may initialize weights, but no sequential
 walk is allowed to become the primary solver.
+
+### Implemented intact-rack path
+
+The promoted DSC00540 path is deliberately narrower than the final arbitrary
+cluster design:
+
+1. Build the physical contact graph and require one connected 15-red component.
+2. Estimate a robust shared ellipse size and orientation from plausible
+   independently fitted members.
+3. Estimate hexagonal lattice phase and spacing from repeated contact vectors.
+4. Enumerate triangular rack orientations and use a global Hungarian assignment.
+5. Select the lattice with the largest consensus of accurate independent
+   anchors before minimizing residual. Grossly wrong members cannot translate
+   the whole rack.
+6. Deduplicate the union of every member's raw boundary samples and assign each
+   sample to at most one proposed silhouette. Ambiguous contact pixels and
+   interior highlights remain unowned diagnostics.
+7. Refine every center against its uniquely owned arcs while keeping the shared
+   shape and lattice displacement bound.
+8. Promote all 15 members together only when anchor, per-node boundary support,
+   and non-overlap gates pass. Otherwise the result is diagnostic-only.
+
+The solver consumes the same independent state for every member. It does not
+walk clockwise/counter-clockwise and cannot propagate one promoted fit into the
+next ball. The old per-ball arc-combination and sequential joint-center
+promotion switches are disabled by default.
+
+### Measured gate (2026-07-11)
+
+Perfect-ellipse benchmark, 22/22 balls in both images:
+
+| Image | Metric | Before | Joint solver |
+|---|---:|---:|---:|
+| DSC00540 | mean source-center error | 8.648 px | 1.217 px |
+| DSC00540 | median source-center error | 0.799 px | 0.763 px |
+| DSC00540 | mean contour RMS | 7.514 px | 1.773 px |
+| DSC00540 | median contour RMS | 1.091 px | 1.110 px |
+| DSC00524 | mean source-center error | 0.666 px | 0.666 px |
+| DSC00524 | mean contour RMS | 0.841 px | 0.841 px |
+
+The DSC00540 rack gate used nine independent lattice anchors at 3.893 px RMS,
+unique boundary support on all 15 red nodes, zero hard world overlaps, and
+1.354 mm RMS touching-distance error under the approximate camera model.
+
+Ellipse QA now matches detections to annotations one-to-one by class and nearest
+source position. Canonical red IDs are display slots, not persistent physical
+identities; a subpixel update may exchange two nearly level red slots without
+changing geometry.
+
+Remaining work:
+
+- generalize promotion beyond the exact 15-red rack;
+- use DSC00542 annotations as the first arbitrary-cluster gate;
+- add explicit existence, duplicate, and missing-hypothesis variables;
+- benchmark cushion and pocket subsets before broad promotion.
 
 ### Acceptance gate
 
@@ -246,15 +308,13 @@ Status: pending
 
 ## Immediate implementation order
 
-1. Ground-truth schema and storage API.
-2. Perfect-ellipse editor.
-3. Shared evidence scoring/service.
-4. Experiment API.
-5. Interactive experiment controls and baseline comparison.
-6. Gold benchmark runner.
-7. Loose-ball solver.
-8. Joint cluster solver.
-9. Confidence calibration and final cleanup.
+1. Complete DSC00529, DSC00534, and DSC00542 gold annotations.
+2. Generalize global ownership/joint fitting to arbitrary connected clusters,
+   gated first by DSC00542.
+3. Implement the loose-ball physical silhouette solver.
+4. Add existence/duplicate/missing hypotheses to scene optimization.
+5. Calibrate confidence against the expanded gold set.
+6. Finish calibrated-camera and production-cleanup phases.
 
 ## Commit policy
 

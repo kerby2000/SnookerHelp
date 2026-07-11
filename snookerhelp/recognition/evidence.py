@@ -187,6 +187,11 @@ def _ball_evidence_from_legacy(
             "consensus_reject_refit": evidence_ball.get("consensus_reject_refit"),
             "arc_combination_refit": evidence_ball.get("arc_combination_refit"),
             "scene_constraints": {
+                "global_cluster_solution": evidence_ball.get(
+                    "global_cluster_solution"
+                )
+                or state_ball.get("source_global_cluster_solution")
+                or {},
                 "joint_cluster": evidence_ball.get("joint_cluster_optimization")
                 or state_ball.get("source_joint_cluster_optimization")
                 or {},

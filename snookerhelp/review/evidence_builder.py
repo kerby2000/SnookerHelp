@@ -208,6 +208,10 @@ def build_review_evidence(
                     "source_joint_cluster_optimization",
                     {},
                 ),
+                "global_cluster_solution": ball.get(
+                    "source_global_cluster_solution",
+                    {},
+                ),
                 "evidence_maps": _evidence_map_summary_with_assets(
                     ball.get("source_evidence_maps"),
                     evidence_map_assets,

@@ -28,6 +28,9 @@ from snookerhelp.recognition.physical_optimize import (
     optimize_ball_xy_from_sphere_projection,
 )
 from snookerhelp.recognition.cluster_optimizer import optimize_cluster_scene
+from snookerhelp.recognition.joint_cluster_solver import (
+    solve_joint_cluster_components,
+)
 from snookerhelp.recognition.arc_combo_fit import (
     arc_combination_refit,
     should_promote_arc_combination,
@@ -467,6 +470,9 @@ class StateEstimator:
                 }
             )
 
+        joint_cluster_solution = self._source_joint_cluster_solution(balls)
+        self._apply_joint_cluster_solution(balls, joint_cluster_solution)
+
         cluster_optimization = self._source_cluster_optimization(balls)
         cluster_by_ball = cluster_optimization.get("by_ball_id", {})
         for ball in balls:
@@ -526,6 +532,7 @@ class StateEstimator:
                     else {"status": "unavailable"}
                 ),
             },
+            "joint_cluster_solver": joint_cluster_solution,
             "scene_constraints": {
                 "adjacent_ball_clusters": cluster_optimization,
             },
@@ -891,6 +898,143 @@ class StateEstimator:
             settings=settings,
         )
 
+    def _source_joint_cluster_solution(
+        self,
+        balls: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        settings = dict(self.detector.config.get("joint_cluster_solver", {}))
+        return solve_joint_cluster_components(
+            balls,
+            camera_model=self.camera_model,
+            ball_radius_mm=self.table.ball_radius_mm,
+            settings=settings,
+        )
+
+    def _apply_joint_cluster_solution(
+        self,
+        balls: list[dict[str, Any]],
+        solution: dict[str, Any],
+    ) -> None:
+        """Apply only component solutions that passed the joint solver gates."""
+
+        by_ball_id = solution.get("by_ball_id") or {}
+        for ball in balls:
+            payload = by_ball_id.get(str(ball.get("id"))) or {}
+            ball["source_global_cluster_solution"] = payload
+            debug = ball.get("debug")
+            if isinstance(debug, dict):
+                debug["source_global_cluster_solution"] = payload
+            if not payload.get("promoted"):
+                continue
+
+            center = payload.get("proposed_source_center_px")
+            ellipse = payload.get("ellipse_fit")
+            selected_points = payload.get("owned_boundary_points_px") or []
+            if not center or not isinstance(ellipse, dict) or not selected_points:
+                payload["promoted"] = False
+                payload["status"] = "invalid_promotion_payload"
+                payload.setdefault("promotion_reasons", []).append(
+                    "missing_center_ellipse_or_owned_points"
+                )
+                continue
+
+            previous_policy = ball.get("source_final_center_policy") or {}
+            previous_filter = (
+                previous_policy.get("filter")
+                or ball.get("source_boundary_filter")
+                or {}
+            )
+            raw_points = previous_filter.get("raw_points_px") or []
+            rejected_points = _points_not_selected(raw_points, selected_points)
+            promoted_filter = {
+                **previous_filter,
+                "status": "joint_cluster_global_ownership",
+                "method": "global_arc_ownership_fixed_shape_joint_fit",
+                "accepted_count": len(selected_points),
+                "rejected_count": len(rejected_points),
+                "joint_cluster_solver": {
+                    "solver_mode": payload.get("solver_mode"),
+                    "component_id": payload.get("component_id"),
+                    "assigned_lattice_node": payload.get(
+                        "assigned_lattice_node"
+                    ),
+                    "owned_boundary_rms_px": payload.get(
+                        "owned_boundary_rms_px"
+                    ),
+                    "promotion_reasons": payload.get("promotion_reasons") or [],
+                },
+            }
+            promoted_policy = {
+                **previous_policy,
+                "status": "computed",
+                "used_for_final_position": True,
+                "selected_map": previous_policy.get("selected_map")
+                or "ball_vs_cloth_probability",
+                "selected_label": previous_policy.get("selected_label")
+                or "Ball-vs-cloth probability",
+                "observed_source": "joint_cluster_global_arc_ownership",
+                "final_center_source": "joint_cluster_global_solution",
+                "center_px": [round(float(center[0]), 4), round(float(center[1]), 4)],
+                "boundary_points_px": _round_points(selected_points),
+                "boundary_rejected_points_px": _round_points(rejected_points),
+                "ellipse_fit": _round_ellipse_fit(ellipse),
+                "filter": promoted_filter,
+                "point_count": len(selected_points),
+                "rejected_point_count": len(rejected_points),
+                "reason": "joint cluster solution passed component gates",
+                "note": (
+                    "Final center and outline come from one simultaneous cluster "
+                    "solution. Boundary samples are globally owned and cannot "
+                    "steer multiple neighboring balls."
+                ),
+                "joint_cluster_solver": payload,
+                "independent_image_evidence": _independent_policy_summary(
+                    previous_policy
+                ),
+            }
+
+            ball["source_final_center_policy"] = promoted_policy
+            ball["source_refined_center_px"] = promoted_policy["center_px"]
+            ball["source_final_center_px"] = promoted_policy["center_px"]
+            ball["source_position_source"] = "joint_cluster_global_solution"
+            ball["source_boundary_points_px"] = _round_points(selected_points)
+            ball["source_boundary_rejected_points_px"] = _round_points(
+                rejected_points
+            )
+            ball["source_boundary_filter"] = promoted_filter
+            ball["source_boundary_evidence_source"] = promoted_policy[
+                "observed_source"
+            ]
+            ball["source_ellipse_fit"] = _round_ellipse_fit(ellipse)
+            ball["source_refined_warped_center_px"] = _point_or_none(
+                *self._source_point_to_warped(ball, source_px=center)
+            )
+
+            by_z = self.camera_model.project_image_point_to_z_planes(
+                (float(center[0]), float(center[1])),
+                self.projection_z_planes_mm,
+            )
+            ball_radius_key = z_plane_key(self.table.ball_radius_mm)
+            source_radius_projection = by_z.get(ball_radius_key)
+            ball["source_refined_table_xy_by_z_mm"] = _round_projection_by_z(by_z)
+            ball["source_refined_table_xy_mm"] = (
+                _point_or_none_from_sequence(source_radius_projection["xy_mm"])
+                if source_radius_projection is not None
+                else None
+            )
+            sphere_projection = _state_ball_sphere_projection(
+                camera_model=self.camera_model,
+                table_radius_mm=self.table.ball_radius_mm,
+                by_z=by_z,
+                observed_points=selected_points,
+                observed_source="joint_cluster_global_arc_ownership",
+            )
+            sphere_projection["global_cluster_solution"] = payload
+            ball["source_sphere_projection"] = sphere_projection
+            if isinstance(debug, dict):
+                debug["source_refined_center_px"] = promoted_policy["center_px"]
+                debug["source_sphere_projection"] = sphere_projection
+
     def _apply_arc_combo_promotions(
         self,
         balls: list[dict[str, Any]],
@@ -898,6 +1042,8 @@ class StateEstimator:
         """Promote cluster-consistent raw-arc fits into the final image model."""
 
         settings = dict(self.detector.config.get("cluster_optimization", {}))
+        if not bool(settings.get("legacy_arc_combo_promotion_enabled", False)):
+            return
         include_fixed_shape_candidates = bool(
             settings.get("arc_combo_fixed_shape_candidates_enabled", True)
         )
@@ -1074,6 +1220,8 @@ class StateEstimator:
         """
 
         settings = dict(self.detector.config.get("cluster_optimization", {}))
+        if not bool(settings.get("joint_center_promotion_enabled", False)):
+            return
         for ball in balls:
             joint = ball.get("source_joint_cluster_optimization") or {}
             if not isinstance(joint, dict):
@@ -1443,6 +1591,19 @@ def _final_evidence_map_key(label: str, policy: dict[str, Any]) -> str:
     if label_key in overrides:
         return str(overrides[label_key])
     return str(policy.get("default_map") or "ball_vs_cloth_probability")
+
+
+def _independent_policy_summary(policy: dict[str, Any]) -> dict[str, Any]:
+    ellipse = policy.get("ellipse_fit") or {}
+    return {
+        "selected_map": policy.get("selected_map"),
+        "observed_source": policy.get("observed_source"),
+        "center_px": _point_or_none_from_sequence(policy.get("center_px")),
+        "ellipse_fit": _round_ellipse_fit(ellipse),
+        "point_count": int(policy.get("point_count") or 0),
+        "rejected_point_count": int(policy.get("rejected_point_count") or 0),
+        "note": "Independent pre-cluster estimate retained for benchmark audit.",
+    }
 
 
 def _feature_attribute_for_map(key: str) -> str:

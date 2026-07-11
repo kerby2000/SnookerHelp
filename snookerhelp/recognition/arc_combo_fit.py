@@ -533,6 +533,50 @@ def _fit_cluster_shape_fixed_ellipse(
     }
 
 
+def fit_fixed_shape_ellipse_center(
+    points_px: list[Any] | tuple[Any, ...] | np.ndarray,
+    *,
+    major_axis_px: float,
+    minor_axis_px: float,
+    angle_deg: float,
+    fallback_center_px: list[float] | tuple[float, float] | np.ndarray,
+    seed_ellipse: dict[str, Any] | None = None,
+    source: str = "fixed_shape_boundary_fit",
+) -> dict[str, Any] | None:
+    """Fit an ellipse center while keeping its physical/local shape fixed.
+
+    Dense clusters often expose only short boundary arcs.  A free five-parameter
+    ellipse can explain those arcs with an impossible size or orientation.  The
+    joint cluster solver therefore estimates a robust shared shape first and
+    lets image evidence move only the center.
+    """
+
+    points = _points_array(points_px)
+    try:
+        fallback = np.asarray(fallback_center_px, dtype=np.float64).reshape(2)
+    except (TypeError, ValueError):
+        return None
+    fit = _fit_cluster_shape_fixed_ellipse(
+        points,
+        prior={
+            "consensus_major_axis_px": float(major_axis_px),
+            "consensus_minor_axis_px": float(minor_axis_px),
+            "consensus_angle_deg": float(angle_deg),
+        },
+        seed_ellipse=seed_ellipse,
+        fallback_center=fallback,
+    )
+    if fit is None:
+        return None
+    fit["source"] = str(source)
+    fit["point_count"] = int(len(points))
+    fit["ellipse_rms_residual_px"] = round(
+        float(ellipse_rms_residual_px(fit, points)),
+        4,
+    )
+    return fit
+
+
 def _linear_fixed_shape_center(
     points: np.ndarray,
     major: float,

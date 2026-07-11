@@ -7,6 +7,7 @@ from statistics import mean, median
 from typing import Any, Iterable
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 from snookerhelp.core.ground_truth import load_ground_truth
 from snookerhelp.core.schema import GroundTruthImage
@@ -42,9 +43,13 @@ def evaluate_ellipse_benchmark(
     }
     rows: list[dict[str, Any]] = []
     map_rows: dict[str, list[dict[str, Any]]] = {}
+    matches, matched_detector_ids = _match_balls_by_label_and_position(
+        list(truth_by_id.values()),
+        list(detected_by_id.values()),
+    )
 
     for ball_id, annotation in sorted(truth_by_id.items()):
-        ball = detected_by_id.get(ball_id)
+        ball = matches.get(ball_id)
         if ball is None:
             rows.append(
                 {
@@ -64,6 +69,7 @@ def evaluate_ellipse_benchmark(
         tolerance = _annotation_tolerance(annotation, default_tolerance_px)
         row = {
             "ball_id": ball_id,
+            "matched_detector_ball_id": int(ball["ball_id"]),
             "label": ball.get("label") or annotation.get("label"),
             "status": "computed" if comparison.get("status") == "computed" else "unavailable",
             "selected_map": policy.get("selected_map"),
@@ -93,8 +99,8 @@ def evaluate_ellipse_benchmark(
             )
 
     computed = [row for row in rows if row.get("status") == "computed"]
-    extras = sorted(set(detected_by_id) - set(truth_by_id))
-    misses = sorted(set(truth_by_id) - set(detected_by_id))
+    extras = sorted(set(detected_by_id) - matched_detector_ids)
+    misses = sorted(set(truth_by_id) - set(matches))
     worst = sorted(
         computed,
         key=lambda row: float(row.get("contour_rms_error_px") or -1.0),
@@ -135,8 +141,11 @@ def evaluate_ellipse_benchmark(
         },
         "balls": rows,
         "metric_note": (
-            "annotation_score and ellipse errors are ground-truth based; "
-            "the production evidence-view score is not used here"
+            "Detections are matched one-to-one to annotations by class and "
+            "nearest source position. This prevents interchangeable red-ball "
+            "display IDs from creating false geometric errors. Annotation "
+            "score and ellipse errors are ground-truth based; the production "
+            "evidence-view score is not used here."
         ),
     }
 
@@ -174,6 +183,7 @@ def write_ellipse_benchmark(
     )
     fieldnames = [
         "ball_id",
+        "matched_detector_ball_id",
         "label",
         "status",
         "selected_map",
@@ -191,6 +201,60 @@ def write_ellipse_benchmark(
         writer.writeheader()
         writer.writerows(result.get("balls", []))
     return json_path, csv_path
+
+
+def _match_balls_by_label_and_position(
+    annotations: list[dict[str, Any]],
+    detections: list[dict[str, Any]],
+) -> tuple[dict[int, dict[str, Any]], set[int]]:
+    """Match same-class balls globally instead of trusting display IDs.
+
+    Canonical IDs are useful UI slots, but red balls are physically
+    interchangeable and two nearly level reds can swap slot order after a
+    subpixel coordinate improvement.  Accuracy must measure geometry, not that
+    incidental ordering.  Hungarian assignment also prevents one detection
+    from satisfying more than one annotation.
+    """
+
+    matches: dict[int, dict[str, Any]] = {}
+    matched_detector_ids: set[int] = set()
+    labels = {
+        _label(item) for item in annotations
+    } | {
+        _label(item) for item in detections
+    }
+    for label in sorted(labels):
+        expected = sorted(
+            [item for item in annotations if _label(item) == label],
+            key=lambda item: int(item["ball_id"]),
+        )
+        observed = sorted(
+            [item for item in detections if _label(item) == label],
+            key=lambda item: int(item["ball_id"]),
+        )
+        if not expected or not observed:
+            continue
+        costs = np.full((len(expected), len(observed)), 1e9, dtype=np.float64)
+        for expected_index, annotation in enumerate(expected):
+            expected_center = (annotation.get("ellipse_px") or {}).get("center_px")
+            for observed_index, detection in enumerate(observed):
+                error = _point_error(detection.get("source_px"), expected_center)
+                if error is not None:
+                    costs[expected_index, observed_index] = error
+        expected_rows, observed_columns = linear_sum_assignment(costs)
+        for expected_index, observed_index in zip(expected_rows, observed_columns):
+            if costs[expected_index, observed_index] >= 1e8:
+                continue
+            annotation_id = int(expected[expected_index]["ball_id"])
+            detection = observed[observed_index]
+            detector_id = int(detection["ball_id"])
+            matches[annotation_id] = detection
+            matched_detector_ids.add(detector_id)
+    return matches, matched_detector_ids
+
+
+def _label(item: dict[str, Any]) -> str:
+    return str(item.get("label") or "unknown").strip().lower()
 
 
 def _aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -247,4 +311,3 @@ __all__ = [
     "evaluate_report_file",
     "write_ellipse_benchmark",
 ]
-

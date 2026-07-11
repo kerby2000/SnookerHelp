@@ -18,6 +18,9 @@ source photo
   -> warped cloth-plane view for rough ball detection
   -> source-image crop refinement for each ball
   -> source-image edge/mask/ellipse evidence
+  -> physical contact graph for adjacent balls
+  -> gated 15-red rack solver: shared shape + global lattice assignment
+  -> global boundary-arc ownership + simultaneous center refinement
   -> approximate physical sphere projection
   -> physical-model-first confidence scores
   -> source center projected through approximate_pinhole_from_corners
@@ -26,6 +29,12 @@ source photo
 
 The warped image is now treated as a debug/rough-detection view, not as the
 final physical measurement surface for ball shapes.
+
+Dense-cluster coordinates are no longer repaired by a clockwise/outside-in
+walk. For an intact 15-red rack, every proposal is derived from the same
+independent detector state and promoted as one component only after measured
+anchor, boundary-support, and non-overlap gates pass. Arbitrary clusters remain
+diagnostic-only until the DSC00542 annotation gate is available.
 
 ## 1. Project Goal
 
