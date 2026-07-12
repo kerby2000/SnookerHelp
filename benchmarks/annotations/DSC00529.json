@@ -1,0 +1,470 @@
+{
+  "schema_version": "snookerhelp.ground_truth.v1",
+  "image_name": "DSC00529",
+  "coordinate_system": "source_px",
+  "balls": [
+    {
+      "label": "white",
+      "coordinate_system": "source_px",
+      "point": [
+        3418.6975,
+        756.2074
+      ],
+      "ball_id": 1,
+      "ellipse_px": {
+        "center_px": [
+          3418.6975,
+          756.2074
+        ],
+        "major_axis_px": 85.0357,
+        "minor_axis_px": 77.382,
+        "angle_deg": 108.79309999999998,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "yellow",
+      "coordinate_system": "source_px",
+      "point": [
+        979.7676,
+        3301.2383
+      ],
+      "ball_id": 2,
+      "ellipse_px": {
+        "center_px": [
+          979.7676,
+          3301.2383
+        ],
+        "major_axis_px": 102.612,
+        "minor_axis_px": 76.8853,
+        "angle_deg": 147.76999999999998,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "green",
+      "coordinate_system": "source_px",
+      "point": [
+        377.9720153808594,
+        2322.9259490966797
+      ],
+      "ball_id": 3,
+      "ellipse_px": {
+        "center_px": [
+          377.9720153808594,
+          2322.9259490966797
+        ],
+        "major_axis_px": 109.11327616235627,
+        "minor_axis_px": 74.94753573140457,
+        "angle_deg": 175.15561829565212,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "brown",
+      "coordinate_system": "source_px",
+      "point": [
+        380.24961853027344,
+        1961.6139068603516
+      ],
+      "ball_id": 4,
+      "ellipse_px": {
+        "center_px": [
+          380.24961853027344,
+          1961.6139068603516
+        ],
+        "major_axis_px": 107.1881080768643,
+        "minor_axis_px": 76.31640951362805,
+        "angle_deg": 0.1327366327936943,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "blue",
+      "coordinate_system": "source_px",
+      "point": [
+        4163.133926391602,
+        3304.56591796875
+      ],
+      "ball_id": 5,
+      "ellipse_px": {
+        "center_px": [
+          4163.133926391602,
+          3304.56591796875
+        ],
+        "major_axis_px": 90.74565262843994,
+        "minor_axis_px": 77.80141264540646,
+        "angle_deg": 47.99260189512847,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "pink",
+      "coordinate_system": "source_px",
+      "point": [
+        3409.9114,
+        3312.7031
+      ],
+      "ball_id": 6,
+      "ellipse_px": {
+        "center_px": [
+          3409.9114,
+          3312.7031
+        ],
+        "major_axis_px": 86.2274,
+        "minor_axis_px": 78.1475,
+        "angle_deg": 71.2714,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "black",
+      "coordinate_system": "source_px",
+      "point": [
+        3903.460952758789,
+        3311.234161376953
+      ],
+      "ball_id": 7,
+      "ellipse_px": {
+        "center_px": [
+          3903.460952758789,
+          3311.234161376953
+        ],
+        "major_axis_px": 88.62023609736174,
+        "minor_axis_px": 76.46419708978551,
+        "angle_deg": 55.76772564658717,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2483.3342,
+        3311.1931
+      ],
+      "ball_id": 8,
+      "ellipse_px": {
+        "center_px": [
+          2483.3342,
+          3311.1931
+        ],
+        "major_axis_px": 87.1169,
+        "minor_axis_px": 79.2137,
+        "angle_deg": 115.21690000000001,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        2405.2600708007812,
+        3310.2674407958984
+      ],
+      "ball_id": 9,
+      "ellipse_px": {
+        "center_px": [
+          2405.2600708007812,
+          3310.2674407958984
+        ],
+        "major_axis_px": 87.5437,
+        "minor_axis_px": 77.69174660973806,
+        "angle_deg": 116.23040000000003,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        3635.6328,
+        3312.0474
+      ],
+      "ball_id": 10,
+      "ellipse_px": {
+        "center_px": [
+          3635.6328,
+          3312.0474
+        ],
+        "major_axis_px": 87.8765,
+        "minor_axis_px": 77.34063601506313,
+        "angle_deg": 63.17349999999999,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        3555.6099,
+        3311.6519
+      ],
+      "ball_id": 11,
+      "ellipse_px": {
+        "center_px": [
+          3555.6099,
+          3311.6519
+        ],
+        "major_axis_px": 87.7489,
+        "minor_axis_px": 79.2534,
+        "angle_deg": 64.99549999999999,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4731.191452026367,
+        3308.5291748046875
+      ],
+      "ball_id": 12,
+      "ellipse_px": {
+        "center_px": [
+          4731.191452026367,
+          3308.5291748046875
+        ],
+        "major_axis_px": 97.38195402087942,
+        "minor_axis_px": 76.45104644811875,
+        "angle_deg": 33.71292536836319,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1682.0305,
+        3296.5742
+      ],
+      "ball_id": 13,
+      "ellipse_px": {
+        "center_px": [
+          1682.0305,
+          3296.5742
+        ],
+        "major_axis_px": 93.518,
+        "minor_axis_px": 78.3196,
+        "angle_deg": 137.88940000000002,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        365.5546875,
+        2837.652145385742
+      ],
+      "ball_id": 14,
+      "ellipse_px": {
+        "center_px": [
+          365.5546875,
+          2837.652145385742
+        ],
+        "major_axis_px": 113.10210014266231,
+        "minor_axis_px": 78.2039,
+        "angle_deg": 164.44542997213796,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        5596.4766,
+        2741.8479
+      ],
+      "ball_id": 15,
+      "ellipse_px": {
+        "center_px": [
+          5596.4766,
+          2741.8479
+        ],
+        "major_axis_px": 109.5982,
+        "minor_axis_px": 77.4513,
+        "angle_deg": 14.745200000000011,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        5591.6953,
+        1882.0458
+      ],
+      "ball_id": 16,
+      "ellipse_px": {
+        "center_px": [
+          5591.6953,
+          1882.0458
+        ],
+        "major_axis_px": 107.789,
+        "minor_axis_px": 77.2611,
+        "angle_deg": 177.6003,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        381.8045959472656,
+        1624.7645874023438
+      ],
+      "ball_id": 17,
+      "ellipse_px": {
+        "center_px": [
+          381.8045959472656,
+          1624.7645874023438
+        ],
+        "major_axis_px": 109.09669130468393,
+        "minor_axis_px": 77.7065,
+        "angle_deg": 7.782193881772685,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        5591.1699,
+        1599.9193
+      ],
+      "ball_id": 18,
+      "ellipse_px": {
+        "center_px": [
+          5591.1699,
+          1599.9193
+        ],
+        "major_axis_px": 106.4202,
+        "minor_axis_px": 77.1506,
+        "angle_deg": 171.59180000000003,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        3982.7964,
+        759.6146
+      ],
+      "ball_id": 19,
+      "ellipse_px": {
+        "center_px": [
+          3982.7964,
+          759.6146
+        ],
+        "major_axis_px": 88.2945,
+        "minor_axis_px": 77.5758,
+        "angle_deg": 128.11649999999997,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        831.0432434082031,
+        739.9584655761719
+      ],
+      "ball_id": 20,
+      "ellipse_px": {
+        "center_px": [
+          831.0432434082031,
+          739.9584655761719
+        ],
+        "major_axis_px": 106.85003305392026,
+        "minor_axis_px": 75.84413374537762,
+        "angle_deg": 29.66749726702446,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        4291.2236,
+        759.8576
+      ],
+      "ball_id": 21,
+      "ellipse_px": {
+        "center_px": [
+          4291.2236,
+          759.8576
+        ],
+        "major_axis_px": 91.5744,
+        "minor_axis_px": 77.6265,
+        "angle_deg": 137.8188,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    },
+    {
+      "label": "red",
+      "coordinate_system": "source_px",
+      "point": [
+        1816.5405,
+        741.5965
+      ],
+      "ball_id": 22,
+      "ellipse_px": {
+        "center_px": [
+          1816.5405,
+          741.5965
+        ],
+        "major_axis_px": 90.7454,
+        "minor_axis_px": 77.9721,
+        "angle_deg": 47.46770000000001,
+        "visible_arcs_deg": [],
+        "occluded_arcs_deg": [],
+        "source": "manual_review_ui"
+      }
+    }
+  ],
+  "image_path": "Media\\03_near_cushions\\DSC00529.JPG"
+}
