@@ -19,9 +19,12 @@ source photo
   -> source-image crop refinement for each ball
   -> source-image edge/mask/ellipse evidence
   -> physical contact graph for adjacent balls
-  -> gated 15-red rack solver: shared shape + global lattice assignment
+  -> generic multi-start cluster solver for arbitrary connected components
   -> global boundary-arc ownership + simultaneous center refinement
+  -> hard non-overlap + duplicate/missing/existence hypotheses + abstention
+  -> gated 15-red rack solver as a measured specialized fallback
   -> approximate physical sphere projection
+  -> conservative isolated-ball physical-silhouette promotion
   -> physical-model-first confidence scores
   -> source center projected through approximate_pinhole_from_corners
   -> report.json + review UI
@@ -31,10 +34,17 @@ The warped image is now treated as a debug/rough-detection view, not as the
 final physical measurement surface for ball shapes.
 
 Dense-cluster coordinates are no longer repaired by a clockwise/outside-in
-walk. For an intact 15-red rack, every proposal is derived from the same
-independent detector state and promoted as one component only after measured
-anchor, boundary-support, and non-overlap gates pass. Arbitrary clusters remain
-diagnostic-only until the DSC00542 annotation gate is available.
+walk. Every generic component proposal is derived from the same independent
+detector state, evaluated from multiple starts, and promoted as one component
+only after boundary-ownership, stability, objective, and hard non-overlap gates
+pass. Missing and duplicate hypotheses are explicit; unresolved cases abstain.
+The intact 15-red rack retains its measured lattice solver as a specialized
+fallback. The first arbitrary-cluster gate passed on DSC00542.
+
+For a ball outside every cluster component, a known-radius sphere silhouette
+may now provide the final source center and table XY when its image objective,
+residual, movement, and sample-count gates all pass. Failed or ambiguous
+physical fits leave the independent image estimate unchanged.
 
 ## 1. Project Goal
 

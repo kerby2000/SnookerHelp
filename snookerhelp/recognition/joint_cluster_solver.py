@@ -10,6 +10,9 @@ from snookerhelp.recognition.cluster_arc_assignment import (
     assign_boundary_points_globally,
 )
 from snookerhelp.recognition.cluster_graph import build_cluster_graph
+from snookerhelp.recognition.generic_cluster_solver import (
+    solve_generic_cluster_component,
+)
 
 try:
     from scipy.optimize import linear_sum_assignment
@@ -23,6 +26,7 @@ def solve_joint_cluster_components(
     camera_model: Any,
     ball_radius_mm: float,
     settings: dict[str, Any] | None = None,
+    source_image: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Solve connected ball components from shared pixels and physics.
 
@@ -31,9 +35,9 @@ def solve_joint_cluster_components(
     proposal from the same independent input state, assigns the union of image
     boundary samples globally, and evaluates a component as one solution.
 
-    The first promoted mode is deliberately narrow: an intact 15-red rack.  A
-    generic component still receives global ownership diagnostics, but remains
-    non-promoting until annotated arbitrary-cluster images provide a gate.
+    The generic multi-start solver is tried first for every component. The
+    measured intact-rack solver remains a specialized fallback when arbitrary
+    evidence is too weak to pass the generic promotion gate.
     """
 
     cfg = settings or {}
@@ -64,26 +68,81 @@ def solve_joint_cluster_components(
         members = [by_raw_id[ball_id] for ball_id in member_ids]
         if len(members) < 2:
             continue
-        if _is_intact_red_rack_candidate(members, cfg):
-            solved = _solve_intact_red_rack(
+        nodes = [_member_input(ball) for ball in members]
+        nodes = [node for node in nodes if node is not None]
+        shape = _shared_shape_consensus(nodes, cfg)
+        generic = solve_generic_cluster_component(
+            nodes,
+            component=component,
+            shape=shape,
+            camera_model=camera_model,
+            ball_radius_mm=ball_radius_mm,
+            settings=cfg,
+            source_image=source_image,
+        )
+        if generic.get("promoted"):
+            solved = generic
+        elif _is_intact_red_rack_candidate(members, cfg):
+            rack = _solve_intact_red_rack(
                 members,
                 component=component,
                 camera_model=camera_model,
                 ball_radius_mm=ball_radius_mm,
                 settings=cfg,
             )
+            if rack.get("promoted"):
+                rack["generic_attempt"] = {
+                    key: generic.get(key)
+                    for key in (
+                        "status",
+                        "model",
+                        "promotion_gate",
+                        "starting_solutions",
+                        "solution_stability",
+                        "duplicate_hypotheses",
+                        "missing_hypotheses",
+                    )
+                }
+                solved = rack
+            else:
+                solved = generic
         else:
-            solved = _diagnose_generic_component(
-                members,
-                component=component,
-                settings=cfg,
-            )
+            solved = generic
         component_results.append(solved)
         for ball_id, payload in (solved.get("by_ball_id") or {}).items():
             by_ball_id[str(ball_id)] = payload
 
     promoted_components = [
         component for component in component_results if component.get("promoted")
+    ]
+    suppressed_ball_ids = sorted(
+        {
+            int(ball_id)
+            for component in promoted_components
+            for ball_id in component.get("suppressed_ball_ids") or []
+        }
+    )
+    duplicate_hypotheses = [
+        {
+            "component_id": component.get("component_id"),
+            **hypothesis,
+        }
+        for component in component_results
+        for hypothesis in (
+            (component.get("duplicate_hypotheses") or {}).get("hypotheses")
+            or []
+        )
+    ]
+    missing_hypotheses = [
+        {
+            "component_id": component.get("component_id"),
+            **hypothesis,
+        }
+        for component in component_results
+        for hypothesis in (
+            (component.get("missing_hypotheses") or {}).get("hypotheses")
+            or []
+        )
     ]
     return {
         "status": (
@@ -95,13 +154,21 @@ def solve_joint_cluster_components(
         "model": "joint_global_arc_cluster_solver",
         "component_count": len(component_results),
         "promoted_component_count": len(promoted_components),
+        "abstained_component_count": sum(
+            component.get("status") == "abstained"
+            for component in component_results
+        ),
+        "suppressed_ball_ids": suppressed_ball_ids,
+        "duplicate_hypotheses": duplicate_hypotheses,
+        "missing_hypotheses": missing_hypotheses,
         "graph": graph,
         "components": component_results,
         "by_ball_id": by_ball_id,
         "note": (
             "All component members are evaluated from the same independent "
-            "input state. Sequential traversal and legacy arc add-back fits "
-            "are not used as final truth."
+            "input state. Multiple starts are compared; hard non-overlap is "
+            "required; uncertain components abstain. Sequential traversal and "
+            "legacy arc add-back fits are not used as final truth."
         ),
     }
 
@@ -704,11 +771,14 @@ def _shared_shape_consensus(
         and float(ellipse.get("minor_axis_px") or 0.0) > 4.0
         and float(ellipse.get("axis_ratio") or 999.0) <= maximum_ratio
     ]
-    if len(plausible) < int(settings.get("joint_shape_min_member_count", 6)):
+    configured_minimum = int(settings.get("joint_shape_min_member_count", 6))
+    required_minimum = min(configured_minimum, max(2, len(nodes)))
+    if len(plausible) < required_minimum:
         return {
             "status": "insufficient_evidence",
             "plausible_member_count": len(plausible),
             "ellipse_count": len(ellipses),
+            "required_member_count": required_minimum,
         }
     major = float(np.median([ellipse["major_axis_px"] for ellipse in plausible]))
     minor = float(np.median([ellipse["minor_axis_px"] for ellipse in plausible]))

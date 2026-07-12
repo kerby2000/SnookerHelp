@@ -55,6 +55,9 @@ def test_physical_optimizer_moves_toward_observed_sphere_projection() -> None:
     assert result["success"] is True
     assert np.linalg.norm(optimized_xy - true_xy) < np.linalg.norm(initial_xy - true_xy)
     assert result["residual_px"] < 1.0
+    assert result["initial_residual_px"] > result["residual_px"]
+    assert result["optimized_ellipse_fit"]["status"] == "predicted"
+    assert len(result["optimized_sphere_curve_px"]) >= 96
 
 
 def test_occlusion_mask_marks_arc_facing_close_neighbor() -> None:

@@ -470,8 +470,15 @@ class StateEstimator:
                 }
             )
 
-        joint_cluster_solution = self._source_joint_cluster_solution(balls)
+        joint_cluster_solution = self._source_joint_cluster_solution(
+            balls,
+            source_image=source_image,
+        )
         self._apply_joint_cluster_solution(balls, joint_cluster_solution)
+        loose_physical_solution = self._apply_loose_physical_silhouette_solution(
+            balls,
+            joint_cluster_solution=joint_cluster_solution,
+        )
 
         cluster_optimization = self._source_cluster_optimization(balls)
         cluster_by_ball = cluster_optimization.get("by_ball_id", {})
@@ -520,7 +527,12 @@ class StateEstimator:
                 "duplicate_suppressed_candidate_count": (
                     result.duplicate_suppressed_candidate_count
                 ),
-                "ball_count": len(result.balls),
+                "ball_count": len(balls),
+                "pre_joint_solver_ball_count": len(result.balls),
+                "joint_solver_suppressed_ball_count": max(
+                    0,
+                    len(result.balls) - len(balls),
+                ),
                 "geometry_note": (
                     "Warped image is cloth-plane rectification; ball shapes "
                     "near edges are not expected to remain circular."
@@ -533,6 +545,7 @@ class StateEstimator:
                 ),
             },
             "joint_cluster_solver": joint_cluster_solution,
+            "loose_ball_physical_silhouette_solver": loose_physical_solution,
             "scene_constraints": {
                 "adjacent_ball_clusters": cluster_optimization,
             },
@@ -901,6 +914,8 @@ class StateEstimator:
     def _source_joint_cluster_solution(
         self,
         balls: list[dict[str, Any]],
+        *,
+        source_image: np.ndarray | None = None,
     ) -> dict[str, Any]:
         settings = dict(self.detector.config.get("joint_cluster_solver", {}))
         return solve_joint_cluster_components(
@@ -908,6 +923,7 @@ class StateEstimator:
             camera_model=self.camera_model,
             ball_radius_mm=self.table.ball_radius_mm,
             settings=settings,
+            source_image=source_image,
         )
 
     def _apply_joint_cluster_solution(
@@ -1034,6 +1050,195 @@ class StateEstimator:
             if isinstance(debug, dict):
                 debug["source_refined_center_px"] = promoted_policy["center_px"]
                 debug["source_sphere_projection"] = sphere_projection
+
+        suppressed_ids = {
+            int(value) for value in solution.get("suppressed_ball_ids") or []
+        }
+        if suppressed_ids:
+            balls[:] = [
+                ball
+                for ball in balls
+                if int(ball.get("id") or -1) not in suppressed_ids
+            ]
+
+    def _apply_loose_physical_silhouette_solution(
+        self,
+        balls: list[dict[str, Any]],
+        *,
+        joint_cluster_solution: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Promote a measured physical silhouette only for isolated balls."""
+
+        settings = dict(self.detector.config.get("physical_optimization", {}))
+        promotion_enabled = bool(settings.get("loose_promotion_enabled", True))
+        clustered_ids = {
+            int(ball_id)
+            for component in (joint_cluster_solution.get("graph") or {}).get(
+                "components",
+                [],
+            )
+            for ball_id in component.get("member_ids") or []
+        }
+        minimum_improvement = float(
+            settings.get("loose_promotion_min_objective_improvement", 0.025)
+        )
+        maximum_residual = float(
+            settings.get("loose_promotion_max_residual_px", 6.0)
+        )
+        maximum_movement = float(
+            settings.get("loose_promotion_max_movement_mm", 8.0)
+        )
+        minimum_points = int(
+            settings.get("loose_promotion_min_observed_points", 18)
+        )
+        by_ball_id: dict[str, dict[str, Any]] = {}
+        promoted_ids: list[int] = []
+
+        for ball in balls:
+            ball_id = int(ball.get("id") or -1)
+            optimization = ball.get("source_sphere_optimization") or {}
+            reasons: list[str] = []
+            if ball_id in clustered_ids:
+                reasons.append("ball_belongs_to_joint_cluster")
+            if not promotion_enabled:
+                reasons.append("loose_physical_promotion_disabled")
+            if not optimization.get("success"):
+                reasons.append("physical_optimizer_has_no_better_solution")
+            improvement = float(optimization.get("objective_improvement") or 0.0)
+            if improvement < minimum_improvement:
+                reasons.append("physical_objective_improvement_too_small")
+            residual = optimization.get("residual_px")
+            if residual is None or float(residual) > maximum_residual:
+                reasons.append("physical_silhouette_residual_too_large")
+            movement = float(optimization.get("movement_from_initial_mm") or 0.0)
+            if movement > maximum_movement:
+                reasons.append("physical_solution_movement_too_large")
+            observed_points = ball.get("source_boundary_points_px") or []
+            if len(observed_points) < minimum_points:
+                reasons.append("too_few_observed_boundary_points")
+            center = optimization.get("optimized_source_center_px")
+            ellipse = optimization.get("optimized_ellipse_fit")
+            optimized_xy = optimization.get("optimized_xy_mm")
+            if not center or not isinstance(ellipse, dict) or not optimized_xy:
+                reasons.append("physical_solution_payload_is_incomplete")
+
+            promoted = not reasons
+            payload = {
+                "status": "promoted" if promoted else "abstained",
+                "promoted": promoted,
+                "model": "known_radius_projected_sphere_silhouette",
+                "ball_id": ball_id,
+                "objective_improvement": round(improvement, 6),
+                "residual_px": residual,
+                "movement_mm": round(movement, 4),
+                "observed_boundary_point_count": len(observed_points),
+                "camera_model": getattr(self.camera_model, "model_name", "unknown"),
+                "camera_model_approximate": not bool(self.camera_model.is_calibrated),
+                "reasons": reasons
+                or [
+                    "isolated_ball",
+                    "known_radius_sphere_improves_image_objective",
+                    "physical_residual_and_movement_passed",
+                ],
+            }
+            by_ball_id[str(ball_id)] = payload
+            ball["source_loose_physical_silhouette_solution"] = payload
+            debug = ball.get("debug")
+            if isinstance(debug, dict):
+                debug["source_loose_physical_silhouette_solution"] = payload
+            if not promoted:
+                continue
+
+            previous_policy = ball.get("source_final_center_policy") or {}
+            physical_ellipse = _round_ellipse_fit(ellipse)
+            physical_center = [
+                round(float(center[0]), 4),
+                round(float(center[1]), 4),
+            ]
+            promoted_policy = {
+                **previous_policy,
+                "status": "computed",
+                "used_for_final_position": True,
+                "model": "known_radius_projected_sphere_silhouette",
+                "center_px": physical_center,
+                "ellipse_fit": physical_ellipse,
+                "final_center_source": "loose_physical_silhouette_solution",
+                "observed_source": previous_policy.get("observed_source")
+                or ball.get("source_boundary_evidence_source"),
+                "reason": "loose physical silhouette promotion gate passed",
+                "physical_silhouette_solver": payload,
+                "independent_image_evidence": _independent_policy_summary(
+                    previous_policy
+                ),
+                "note": (
+                    "Final center and outline are the projection of a known-radius "
+                    "sphere fitted to retained image-boundary evidence."
+                ),
+            }
+            ball["source_final_center_policy"] = promoted_policy
+            ball["source_refined_center_px"] = physical_center
+            ball["source_final_center_px"] = physical_center
+            ball["source_position_source"] = "loose_physical_silhouette_solution"
+            ball["source_ellipse_fit"] = physical_ellipse
+            ball["source_refined_warped_center_px"] = _point_or_none(
+                *self._source_point_to_warped(ball, source_px=physical_center)
+            )
+
+            by_z = self.camera_model.project_image_point_to_z_planes(
+                (float(center[0]), float(center[1])),
+                self.projection_z_planes_mm,
+            )
+            ball_radius_key = z_plane_key(self.table.ball_radius_mm)
+            radius_projection = by_z.get(ball_radius_key)
+            if isinstance(radius_projection, dict):
+                radius_projection["xy_mm"] = [
+                    round(float(optimized_xy[0]), 4),
+                    round(float(optimized_xy[1]), 4),
+                ]
+                radius_projection["xyz_mm"] = [
+                    round(float(optimized_xy[0]), 4),
+                    round(float(optimized_xy[1]), 4),
+                    round(float(self.table.ball_radius_mm), 4),
+                ]
+            ball["source_refined_table_xy_by_z_mm"] = _round_projection_by_z(by_z)
+            ball["source_refined_table_xy_mm"] = [
+                round(float(optimized_xy[0]), 4),
+                round(float(optimized_xy[1]), 4),
+            ]
+            sphere_projection = {
+                **(ball.get("source_sphere_projection") or {}),
+                "ellipse_fit": physical_ellipse,
+                "loose_physical_silhouette_solution": payload,
+            }
+            ball["source_sphere_projection"] = sphere_projection
+            if isinstance(debug, dict):
+                debug["source_refined_center_px"] = physical_center
+                debug["source_ellipse_fit"] = physical_ellipse
+                debug["source_final_center_policy"] = promoted_policy
+                debug["source_sphere_projection"] = sphere_projection
+            promoted_ids.append(ball_id)
+
+        return {
+            "status": "promoted" if promoted_ids else "abstained",
+            "enabled": promotion_enabled,
+            "model": "known_radius_projected_sphere_silhouette",
+            "candidate_count": len(by_ball_id),
+            "promoted_count": len(promoted_ids),
+            "promoted_ball_ids": promoted_ids,
+            "cluster_excluded_ball_ids": sorted(clustered_ids),
+            "promotion_thresholds": {
+                "minimum_objective_improvement": minimum_improvement,
+                "maximum_residual_px": maximum_residual,
+                "maximum_movement_mm": maximum_movement,
+                "minimum_observed_boundary_points": minimum_points,
+            },
+            "by_ball_id": by_ball_id,
+            "note": (
+                "Cluster members are excluded. Approximate-camera solutions are "
+                "promoted only when measured image objective, residual, movement, "
+                "and boundary-support gates all pass."
+            ),
+        }
 
     def _apply_arc_combo_promotions(
         self,
@@ -1374,6 +1579,10 @@ class StateEstimator:
             "contour_points_px": physical_optimization.get(
                 "optimized_sphere_curve_px",
                 sphere_projection.get("contour_points_px", []),
+            ),
+            "ellipse_fit": physical_optimization.get(
+                "optimized_ellipse_fit",
+                sphere_projection.get("ellipse_fit"),
             ),
             "optimization": physical_optimization,
             "forward_projection": {

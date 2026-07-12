@@ -91,6 +91,11 @@ evidence_maps:
 
 physical_optimization:
   enabled: true
+  loose_promotion_enabled: true
+  loose_promotion_min_objective_improvement: 0.025
+  loose_promotion_max_residual_px: 6.0
+  loose_promotion_max_movement_mm: 8.0
+  loose_promotion_min_observed_points: 18
   z_mm: 26.25
   minimum_observed_points: 18
   search_radius_mm: 18.0
@@ -154,6 +159,33 @@ cluster_optimization:
 
 joint_cluster_solver:
   enabled: true
+  generic_joint_promotion_enabled: true
+  generic_promotion_min_component_size: 5
+  generic_refine_iterations: 4
+  generic_refine_min_owned_points: 5
+  generic_start_max_shift_px: 8.0
+  generic_max_center_shift_px: 8.0
+  generic_start_jitter_px: 0.75
+  generic_refine_blend: 0.85
+  generic_unowned_weight: 0.22
+  generic_movement_weight: 0.04
+  generic_promotion_min_owned_points: 5
+  generic_promotion_min_supported_node_fraction: 0.80
+  generic_promotion_min_owned_fraction: 0.65
+  generic_promotion_max_start_spread_px: 2.5
+  generic_promotion_min_objective_improvement: 0.0005
+  generic_hard_overlap_tolerance_mm_calibrated: 0.6
+  generic_hard_overlap_tolerance_mm_approximate: 2.5
+  generic_duplicate_suppression_enabled: true
+  generic_duplicate_distance_factor: 0.45
+  generic_duplicate_min_strength_ratio: 1.8
+  generic_abstain_on_missing_hypothesis: true
+  generic_missing_min_point_count: 14
+  generic_missing_point_link_px: 7.0
+  generic_missing_min_center_separation_factor: 0.70
+  generic_highlight_min_value: 190
+  generic_highlight_max_saturation: 150
+  generic_highlight_max_normalized_radius: 0.45
   rack_joint_promotion_enabled: true
   rack_component_size: 15
   rack_min_red_fraction: 0.90

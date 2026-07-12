@@ -3,34 +3,48 @@
 This document describes the current v1 boundary-evidence pipeline used by the
 review UI and by physical-model scoring.
 
-Current status: v1.6.0 plus a promoted, measured intact-rack joint solver,
-generic-cluster diagnostics, full-table global evidence-map normalization,
-live backend experiments, and tracked perfect-ellipse ground truth.
+Current status: v1.7.0 with measured intact-rack and arbitrary-cluster joint
+solvers, conservative loose-ball physical-silhouette promotion, full-table
+global evidence-map normalization, live backend experiments, and tracked
+perfect-ellipse ground truth.
 
-## Current cluster policy (2026-07-11)
+## Current cluster policy (2026-07-12)
 
 The older per-ball rejected-arc combinations, shell traversals, and sequential
 contact-center adjustments documented later in this file are retained only as
 historical diagnostics. Their promotion flags are disabled by default.
 
-For an intact 15-red component, production now uses:
+For every connected component, the generic production path now uses:
 
 1. robust shared ellipse shape;
-2. hexagonal phase/spacing estimation from independent contact vectors;
-3. global triangular-lattice assignment that maximizes accurate anchors;
-4. one deduplicated pool of raw boundary samples;
-5. exclusive nearest-silhouette arc ownership with an ambiguity margin;
-6. fixed-shape center refinement for all members;
-7. component-wide promotion only after anchor, boundary-support, and physical
-   non-overlap gates pass.
+2. one deduplicated pool of raw boundary samples;
+3. independent, local-fit, and opposing deterministic-perturbation starts;
+4. exclusive nearest-silhouette arc ownership with an ambiguity margin;
+5. simultaneous fixed-shape center refinement for all members;
+6. hard world-space non-overlap;
+7. explicit existence, duplicate, and diagnostic missing-ball hypotheses;
+8. component-wide promotion only after support, objective, stability, and
+   physical gates pass; unresolved cases abstain.
+
+For an intact 15-red rack, a specialized fallback additionally uses hexagonal
+phase/spacing estimation and global triangular-lattice assignment. It is used
+only when the generic solver abstains and its own measured rack gate passes.
 
 This path has no traversal order. A bad member cannot become input truth for the
 next member. On DSC00540 it reduces mean source-center error from 8.648 px to
 1.217 px and mean contour RMS from 7.514 px to 1.773 px. DSC00524 remains exactly
 unchanged at 0.666 px mean center error and 0.841 px mean contour RMS.
 
-Generic/arbitrary clusters still receive graph and ownership diagnostics only;
-promotion waits for the completed DSC00542 perfect-ellipse benchmark.
+On the annotated clustered reds in DSC00542, generic fitting reduced mean
+source-center error from 0.490 px to 0.287 px and maximum error from 4.529 px
+to 0.929 px while retaining all 22 detector hypotheses. Smaller or ambiguous
+components continue to abstain rather than inherit this promotion.
+
+Outside all cluster components, a known-radius projected sphere may replace the
+independent final center only when measured objective improvement, projected
+residual, movement, and point-count thresholds pass. This reduced mean center
+error on each annotated loose/cushion/pocket subset without changing counts;
+the approximate camera is still reported and limits trust.
 
 ## Short version
 

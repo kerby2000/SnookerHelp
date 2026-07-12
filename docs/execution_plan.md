@@ -117,13 +117,18 @@ Current evidence:
 
 ## Phase 2 - tracked gold benchmark
 
-Status: in progress
+Status: core promotion set complete; expansion remains open
 
 Current annotation coverage:
 
-- complete: DSC00524 and DSC00540;
-- being reviewed: DSC00529, DSC00534, and DSC00542;
-- not yet part of an algorithm promotion gate: DSC00525 and DSC00543.
+- complete: DSC00524, DSC00529, DSC00534, DSC00540, and DSC00542;
+- not yet part of an algorithm promotion gate: DSC00525;
+- DSC00543 is the empty-table/count regression case and has no ball ellipses.
+
+DSC00542 currently contains 21 saved ellipse annotations while the source image
+and detector contain 22 visible-ball hypotheses. The unmatched clustered red is
+kept by the solver because it has distinct pixel/highlight support. This is an
+annotation-audit item, not permission to suppress a detector hypothesis.
 
 ### Initial gold images
 
@@ -160,7 +165,7 @@ cushion, and pocket subsets.
 
 ## Phase 3 - loose-ball physical silhouette solver
 
-Status: pending
+Status: conservative approximate-camera slice complete
 
 ### Design
 
@@ -169,6 +174,35 @@ Status: pending
 - Source edge/color evidence scores the predicted silhouette.
 - A free ellipse is an observation/diagnostic, not final geometry.
 - Several initial positions are evaluated to expose ambiguity.
+
+### Implemented promotion path
+
+The existing known-radius sphere optimizer is now allowed to provide the final
+center for an isolated ball only when every gate passes:
+
+- the ball is not a member of any joint-cluster component;
+- the physical image objective improves by at least 0.025;
+- projected-silhouette residual is at most 6 px;
+- movement from the independent estimate is at most 8 mm;
+- at least 18 observed source-boundary samples are available;
+- the optimized center, world XY, and projected ellipse are complete.
+
+Otherwise it explicitly abstains and preserves the independent image estimate.
+The approximate camera remains named in the audit output and still caps trust.
+
+### Measured gate (2026-07-12)
+
+Perfect-ellipse benchmark after conservative promotion:
+
+| Image | Mean center before | Mean center after | Mean contour before | Mean contour after |
+|---|---:|---:|---:|---:|
+| DSC00524 | 0.666 px | 0.447 px | 0.841 px | 0.629 px |
+| DSC00529 | 3.572 px | 2.593 px | 3.138 px | 2.176 px |
+| DSC00534 | 4.498 px | 3.717 px | 3.927 px | 3.390 px |
+| DSC00542 | 1.014 px | 0.632 px | 1.203 px | 1.030 px |
+
+Every promoted annotated ball improved; high-residual or low-improvement
+solutions abstained. Detector counts were unchanged.
 
 ### Acceptance gate
 
@@ -179,7 +213,7 @@ Status: pending
 
 ## Phase 4 - joint cluster solver
 
-Status: intact-rack slice complete; arbitrary clusters pending
+Status: intact-rack and first arbitrary-cluster slices complete
 
 ### Replace, do not extend, the late repair stack
 
@@ -250,10 +284,39 @@ changing geometry.
 
 Remaining work:
 
-- generalize promotion beyond the exact 15-red rack;
-- use DSC00542 annotations as the first arbitrary-cluster gate;
-- add explicit existence, duplicate, and missing-hypothesis variables;
-- benchmark cushion and pocket subsets before broad promotion.
+- extend the generic gate to more annotated cluster shapes and sizes;
+- replace highlight support with calibrated appearance likelihood where useful;
+- add detector-side search for a diagnostic missing hypothesis before it can be
+  promoted as a real new ball;
+- calibrate existence and positional confidence against the expanded gold set.
+
+### Generic arbitrary-component solver (2026-07-12)
+
+The generic path makes no triangle, rack, perimeter, or traversal assumption.
+For every connected component it:
+
+1. builds one deduplicated union of raw boundary samples;
+2. initializes simultaneous centers from independent, local fixed-shape, and
+   two opposing deterministic perturbation starts;
+3. recomputes exclusive global boundary ownership and all centers together;
+4. enforces a hard world-space non-overlap gate;
+5. compares start stability and a component-wide pixel objective;
+6. evaluates leave-one-out existence support and explicit duplicate hypotheses;
+7. reports unexplained-arc missing hypotheses as diagnostic-only;
+8. suppresses a duplicate only with a strong same-label support asymmetry and
+   no unique highlight support; otherwise it abstains;
+9. promotes the whole active component only if every gate passes.
+
+The exact-rack solver remains a measured specialized fallback when the generic
+component abstains on DSC00540.
+
+On the 14 annotated clustered reds in DSC00542, generic joint fitting reduced
+mean center error from 0.490 px to 0.287 px and maximum center error from
+4.529 px to 0.929 px. Mean contour RMS improved from 0.610 px to 0.538 px and
+maximum contour RMS from 4.537 px to 1.117 px. Four starts converged within
+0.031 px, all 14 nodes retained unique support, hard non-overlap passed, and no
+duplicate or missing hypothesis was promoted. All 22 detector hypotheses were
+retained.
 
 ### Acceptance gate
 
@@ -308,13 +371,13 @@ Status: pending
 
 ## Immediate implementation order
 
-1. Complete DSC00529, DSC00534, and DSC00542 gold annotations.
-2. Generalize global ownership/joint fitting to arbitrary connected clusters,
-   gated first by DSC00542.
-3. Implement the loose-ball physical silhouette solver.
-4. Add existence/duplicate/missing hypotheses to scene optimization.
-5. Calibrate confidence against the expanded gold set.
-6. Finish calibrated-camera and production-cleanup phases.
+1. Audit the unmatched DSC00542 clustered-red annotation and add DSC00525 to
+   the loose-ball gold set.
+2. Calibrate decomposed confidence against the five-image gold benchmark.
+3. Add detector confirmation for diagnostic missing-ball hypotheses.
+4. Extend generic-cluster evaluation to new non-rack cluster photos as they
+   become available.
+5. Finish calibrated-camera and production-cleanup phases.
 
 ## Commit policy
 

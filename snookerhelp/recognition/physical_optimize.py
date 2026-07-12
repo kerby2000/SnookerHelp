@@ -127,10 +127,13 @@ def optimize_ball_xy_from_sphere_projection(
             np.asarray(best_projection.get("projected_center_px") or [], dtype=np.float64)
         ),
         "optimized_sphere_curve_px": best_projection.get("contour_points_px", []),
+        "optimized_ellipse_fit": best_projection.get("ellipse_fit"),
         "initial_objective": round(float(initial_score["objective"]), 6),
         "optimized_objective": round(float(best_score["objective"]), 6),
         "objective_improvement": round(improvement, 6),
+        "initial_residual_px": initial_score.get("rms_error_px"),
         "residual_px": None if residual_px is None else round(float(residual_px), 4),
+        "initial_evidence_mean": initial_score.get("evidence_mean"),
         "movement_from_initial_mm": round(movement, 4),
         "confidence": confidence,
         "reasons": sorted(set(reasons)),

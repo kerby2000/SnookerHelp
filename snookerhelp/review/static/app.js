@@ -1,4 +1,4 @@
-const UI_VERSION = "v1.6.0";
+const UI_VERSION = "v1.7.0";
 
 const state = {
   reports: [],
@@ -1650,6 +1650,9 @@ function finalCenterPolicyText(policy) {
   if (!policy || !policy.status) return "current fallback source center";
   if (policy.used_for_final_position) {
     const center = policy.center_px ? ` @ ${fmt(policy.center_px[0])}, ${fmt(policy.center_px[1])} px` : "";
+    if (policy.model === "known_radius_projected_sphere_silhouette") {
+      return `known-radius physical sphere silhouette${center}`;
+    }
     return `${policy.selected_label || displayLabel(policy.selected_map || "selected evidence map")}${center}`;
   }
   return `fallback source center; ${policy.reason || displayLabel(policy.status)}`;
@@ -1659,6 +1662,7 @@ function physicalModelRows(ball) {
   const model = ball.evidence?.physical_model || {};
   const optimization = model.optimization || {};
   const cluster = clusterInfo(ball);
+  const globalCluster = globalClusterInfo(ball);
   const explanation = (model.explanation || []).join(" ");
   return [
     ["Model", displayLabel(model.model_type || "none")],
@@ -1671,6 +1675,7 @@ function physicalModelRows(ball) {
     ["Optimization", `${displayLabel(optimization.status || "n/a")}; move ${optimization.movement_from_initial_mm == null ? "n/a" : `${fmt(optimization.movement_from_initial_mm)} mm`}`],
     ["Optimized residual", optimization.residual_px == null ? "n/a" : `${fmt(optimization.residual_px)} px`],
     ["Scene constraints", cluster.cluster_status ? `${displayLabel(cluster.cluster_status)} cluster ${cluster.cluster_id}; ${cluster.component_size} balls; ${cluster.improvement_mm == null ? "n/a" : `${fmt(cluster.improvement_mm)} mm`} pair-distance improvement` : "no adjacent cluster"],
+    ["Joint cluster solution", globalClusterText(globalCluster)],
     ["Cluster shell", clusterShellText(cluster)],
     ["Cluster traversal", clusterTraversalText(cluster)],
     ["Cluster shape", clusterShapeText(cluster)],
@@ -1719,6 +1724,7 @@ function renderSelectedSummary() {
   const selectedScore = evidenceViewScore(evidenceVariant(ball, state.primaryEvidenceKey || "source"));
   const physical = ball.evidence?.physical_model || {};
   const cluster = clusterInfo(ball);
+  const globalCluster = globalClusterInfo(ball);
   const numbering = numberingInfo(ball);
   const mapCount = ball.evidence?.diagnostics?.evidence_maps?.assets?.length || 0;
   const annotation = experimentForBall(ball)
@@ -1730,7 +1736,7 @@ function renderSelectedSummary() {
       <dt>Score</dt><dd>${confidence.score == null ? "n/a" : `${Math.round(confidence.score * 100)}%`} · ${escapeHtml(confidence.level || "unknown")}</dd>
       <dt>Image evidence</dt><dd>${escapeHtml(row?.label || displayLabel(image.source || "n/a"))}; ${selectedBoundaryPoints(ball).length || image.point_count || 0} points; view ${escapeHtml(evidenceViewScorePlain(selectedScore))}; ${mapCount} maps</dd>
       <dt>Physical residual</dt><dd>${physical.residual_px == null ? "n/a" : `${fmt(physical.residual_px)} px`} · ${escapeHtml(displayLabel(physical.residual_grade || "unknown"))}</dd>
-      <dt>Scene</dt><dd>${escapeHtml(cluster.cluster_status ? `${displayLabel(cluster.cluster_status)} adjacent cluster; ${clusterShellText(cluster)}` : "no adjacent cluster")}</dd>
+      <dt>Scene</dt><dd>${escapeHtml(globalCluster.status ? globalClusterText(globalCluster) : (cluster.cluster_status ? `${displayLabel(cluster.cluster_status)} adjacent cluster; ${clusterShellText(cluster)}` : "no adjacent cluster"))}</dd>
       <dt>Traversal</dt><dd>${escapeHtml(clusterTraversalText(cluster))}</dd>
       <dt>Cluster shape</dt><dd>${escapeHtml(clusterShapeText(cluster))}</dd>
       <dt>Raw detector</dt><dd>${escapeHtml(numbering.raw_detector_id == null ? "n/a" : `#${numbering.raw_detector_id}`)}</dd>
@@ -1744,6 +1750,7 @@ function confidenceRows(ball) {
   const confidence = ball.confidence || {};
   const finalPolicy = ball.evidence?.diagnostics?.final_image_evidence || {};
   const cluster = clusterInfo(ball);
+  const globalCluster = globalClusterInfo(ball);
   const annotation = experimentForBall(ball)
     ? state.experiment.result?.experiment?.annotation_comparison
     : null;
@@ -1753,6 +1760,7 @@ function confidenceRows(ball) {
     ["Method", displayLabel(confidence.method || "unknown")],
     ["Components", confidenceComponents(confidence.components || {})],
     ["Scene constraints", cluster.cluster_status ? `${displayLabel(cluster.cluster_status)}; pair RMS ${cluster.initial_pair_rms_mm == null ? "n/a" : `${fmt(cluster.initial_pair_rms_mm)}→${fmt(cluster.joint_pair_rms_mm)} mm`}` : "no adjacent cluster"],
+    ["Joint cluster solution", globalClusterText(globalCluster)],
     ["Cluster shell", clusterShellText(cluster)],
     ["Cluster traversal", clusterTraversalText(cluster)],
     ["Cluster shape", clusterShapeText(cluster)],
@@ -1975,6 +1983,21 @@ function clusterInfo(ball) {
   return ball?.evidence?.diagnostics?.scene_constraints?.joint_cluster
     || ball?.evidence?.physical_model?.optimization?.joint_cluster
     || {};
+}
+
+function globalClusterInfo(ball) {
+  return ball?.evidence?.diagnostics?.scene_constraints?.global_cluster_solution
+    || ball?.evidence?.physical_model?.global_cluster_solution
+    || {};
+}
+
+function globalClusterText(cluster) {
+  if (!cluster || !cluster.status) return "not in a joint cluster";
+  const component = cluster.component_id == null ? "" : ` component ${cluster.component_id}`;
+  const size = cluster.component_size == null ? "" : `; ${cluster.component_size} hypotheses`;
+  const movement = cluster.movement_px == null ? "" : `; move ${fmt(cluster.movement_px)} px`;
+  const support = cluster.owned_boundary_point_count == null ? "" : `; ${cluster.owned_boundary_point_count} uniquely owned points`;
+  return `${displayLabel(cluster.status)}${component}${size}${movement}${support}`;
 }
 
 function numberingInfo(ball) {

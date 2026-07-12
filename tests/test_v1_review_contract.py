@@ -277,7 +277,8 @@ def test_v1_static_html_uses_product_language() -> None:
     assert "uiVersion" in html
     assert "sourceZoomLabel" in html
     assert "sourceFitSelected" in html
-    assert 'const UI_VERSION = "v1.6.0"' in app
+    assert 'const UI_VERSION = "v1.7.0"' in app
+    assert "globalClusterText" in app
     assert "setupSourceViewport" in app
     assert "fitSourceToSelected" in app
     assert "zoomSourceAtClient" in app
